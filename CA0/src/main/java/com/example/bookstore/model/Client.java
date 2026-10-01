@@ -3,6 +3,7 @@ package com.example.bookstore.model;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
+import jakarta.validation.constraints.NotNull;
 
 /**
  * Entity representing a Client in the bookstore.
@@ -21,6 +22,10 @@ public class Client {
     /** The email address of the client. */
     private String email;
 
+    /** NIF */
+    @NotNull(message = "O NIF não pode ser nulo")
+    private int nif;
+
     /**
      * Default constructor for Client.
      */
@@ -33,6 +38,14 @@ public class Client {
      */
     public Long getId() {
         return id;
+    }
+
+    public int getNif() {
+        return nif;
+    }
+
+    public int getNIF() {
+        return nif;
     }
 
     /**
@@ -78,5 +91,17 @@ public class Client {
      */
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    /**
+     * Sets the client's NIF.
+     *
+     * @param nif the NIF to set
+     */
+    public void setNif(int nif) {
+        if (nif < 100000000 || nif > 999999999) {
+            throw new IllegalArgumentException("NIF must have exactly 9 digits");
+        }
+        this.nif = nif;
     }
 }

@@ -48,6 +48,7 @@ public class DataInitializer {
             Client client = new Client();
             client.setName("John Doe");
             client.setEmail("john@demo.com");
+            client.setNif(123456789);
             clientRepo.save(client);
 
             // Order
