@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="CA1-Alternative-Ant" default="zipBackup" basedir=".">
+    
+    <!-- Propriedades com os caminhos atualizados para a nova pasta -->
+    <property name="src.dir" value="src"/>
+    <property name="backup.dir" value="backup_ant"/>
+    <property name="build.dir" value="build_ant"/>
+
+    <!-- Tarefa 1: Backup Sources -->
+    <target name="backupSources" description="Copia as diretorias de código para uma pasta de backup">
+        <mkdir dir="${backup.dir}"/>
+        <copy todir="${backup.dir}">
+            <fileset dir="${src.dir}">
+                <include name="main/**"/>
+                <include name="test/**"/>
+            </fileset>
+        </copy>
+        <echo message="Backup de código concluído com sucesso em ${backup.dir}"/>
+    </target>
+
+    <!-- Tarefa 2: Zip Backup (Depende da Tarefa 1) -->
+    <target name="zipBackup" depends="backupSources" description="Cria um arquivo zip do backup">
+        <mkdir dir="${build.dir}/backups"/>
+        <zip destfile="${build.dir}/backups/backup-ant.zip" basedir="${backup.dir}"/>
+        <echo message="Arquivo ZIP gerado com sucesso em ${build.dir}/backups/"/>
+    </target>
+
+</project>
