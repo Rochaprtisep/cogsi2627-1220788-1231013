@@ -57,3 +57,63 @@ tasks.named('processResources', ProcessResources) {
         filter(ReplaceTokens, tokens: localTokens)
     }
 }
+
+def devDeployDir = layout.buildDirectory.dir('deployment/dev')
+
+// 1. Clean the deployment directory
+tasks.register('cleanDevDeployment', Delete) {
+    group = 'deployment'
+    description = 'Deletes the dev deployment directory.'
+    delete devDeployDir
+}
+
+// 2. Copy the main application artifact
+tasks.register('copyAppToDev', Copy) {
+    group = 'deployment'
+    description = 'Copies the application jar to the dev deployment directory.'
+    dependsOn 'cleanDevDeployment'
+    from tasks.named('jar')
+    into devDeployDir
+}
+
+// 3. Copy only the runtime dependencies into lib/
+tasks.register('copyLibsToDev', Copy) {
+    group = 'deployment'
+    description = 'Copies the runtime dependencies to the lib folder.'
+    dependsOn 'cleanDevDeployment'
+    mustRunAfter 'copyAppToDev'
+    from configurations.runtimeClasspath
+    into devDeployDir.map { it.dir('lib') }
+}
+
+// 4. Copy the configuration files, replacing the tokens
+tasks.register('copyConfigToDev', Copy) {
+    group = 'deployment'
+    description = 'Copies the .properties files to the dev deployment, replacing tokens.'
+    dependsOn 'cleanDevDeployment'
+    mustRunAfter 'copyLibsToDev'
+    notCompatibleWithConfigurationCache('The build timestamp must be recomputed on every deployment')
+
+    def devTokens = [
+            projectVersion: project.version.toString(),
+            environment   : 'dev',
+            buildTimestamp: OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+    ]
+    inputs.properties(devTokens)
+
+    from('src/main/resources') {
+        include '*.properties'
+    }
+    into devDeployDir
+    filter(ReplaceTokens, tokens: devTokens)
+}
+
+tasks.register('deployToDev') {
+    group = 'deployment'
+    description = 'Deploys the jar, runtime libs and config to build/deployment/dev.'
+    dependsOn 'copyAppToDev', 'copyLibsToDev', 'copyConfigToDev'
+    def target = devDeployDir.get().asFile
+    doLast {
+        println "Bookstore deployed to: ${target}"
+    }
+}
