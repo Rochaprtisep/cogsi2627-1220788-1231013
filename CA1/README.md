@@ -209,3 +209,29 @@ Durante a execução prática, configurou-se e expandiu-se o projeto base com as
 1. **runServer:** Registou-se uma nova tarefa do tipo `JavaExec` no ficheiro `build.gradle` para iniciar o servidor de chat e permitir a conexão do cliente.
 2. **Testes Unitários:** O catálogo de versões (`libs.versions.toml`) foi atualizado com o JUnit 5 e Log4j2. Após a injeção das respetivas dependências, validou-se com sucesso a execução da classe `AppTest.java` através da ferramenta de testes do Gradle.
 3. **Backup e Zip:** Criou-se a tarefa `backupSources` baseada no tipo nativo `Copy` para salvaguardar exclusivamente as diretorias de código. Para arquivar esta cópia de segurança, implementou-se a tarefa `zipBackup` (tipo `Zip`), assegurando a correta ordem de execução através da dependência explícita (`dependsOn tasks.named('backupSources')`).
+
+
+
+## Alternativa Tecnológica: Apache Ant
+
+Esta secção e a seguinte dedicam-se à apresentação, análise e implementação de uma solução alternativa ao Gradle para a automação do projeto, com o objetivo de demonstrar as diferenças práticas entre as ferramentas[cite: 16].
+
+### Análise e Comparação com Gradle
+Para explorar uma ferramenta de build que não seja baseada no ecossistema Gradle, o Apache Ant foi selecionado como alternativa[cite: 25]. O Ant é uma ferramenta clássica na qual as instruções de automação são configuradas através de um ficheiro XML (`build.xml`), o que contrasta com a abordagem baseada em código e scripts declarativos (Groovy/Kotlin) do Gradle.
+
+*   **Extensibilidade e Customização:** A comparação de como as ferramentas podem ser estendidas evidencia grandes diferenças de arquitetura[cite: 25]. No Gradle, a extensibilidade flui naturalmente através da programação direta nos ficheiros de build ou pela injeção rápida de *plugins* modernos e altamente configuráveis. No Ant, a extensão requer a definição de `<macrodef>` para blocos de XML reutilizáveis, ou a programação de *Custom Tasks* puras em Java que, posteriormente, precisam de ser registadas no ficheiro XML através da tag `<taskdef>`[cite: 25].
+*   **Gestão de Dependências:** A base deste CA1 assenta em dependências como o JUnit 5 e Log4j2. Enquanto o Gradle possui um motor robusto de resolução de dependências transitivas, o Ant (na sua forma base) não tem essa capacidade. Para resolver dependências de rede no Ant, seria necessário importar fisicamente os ficheiros `.jar` para o projeto ou acoplar uma segunda ferramenta dedicada (o Apache Ivy).
+
+### Design da Solução Alternativa
+Para solucionar os mesmos requisitos da Parte 1 utilizando puramente o Ant[cite: 25], o design estrutural do ficheiro `build.xml` assentaria nos seguintes *targets*:
+
+1. **`runServer`:** Empregar a tarefa nativa `<java>` do Ant para arrancar o processo, definindo o atributo `classname` para a aplicação servidora e passando a respetiva porta via `<arg>`.
+2. **Testes Unitários:** Utilizar a *task* `<junitlauncher>` do Ant (suporte moderno para JUnit 5), especificando o `classpath` manual para os ficheiros JAR do Log4j2 e do JUnit previamente transferidos.
+3. **Backup e Archive (DevOps):**
+   * Configuração de um target de backup usando a *task* nativa `<copy>`, instruindo o uso de um `<fileset>` que englobe explicitamente as diretorias `src/main` e `src/test`.
+   * Criação do target final usando a *task* `<zip>`, garantindo a execução sequencial correta através da inclusão do atributo `depends="nome_do_target_de_backup"`.
+
+**Reflexão Prática:** 
+A implementação do Backup e Zip em Ant (`build.xml`) demonstrou que a ferramenta é mais verbosa e obriga a passos imperativos. Ao contrário do Gradle, que infere a criação de pastas automaticamente nas tarefas de cópia, no Ant tivemos de usar `<mkdir>` para as criar à mão antes de mover os ficheiros. 
+
+A maior diferença notada na prática, no entanto, foi a ausência de um "Wrapper". Ao tentar executar o script, o terminal não reconheceu o comando porque o Apache Ant exige instalação e configuração manual prévia no sistema operativo. Isto contrasta fortemente com o script `gradlew` usado na Parte 1, que garante que qualquer developer consegue correr o projeto de imediato, provando a superioridade do Gradle na padronização e partilha de projetos em equipa.
