@@ -1,0 +1,59 @@
+import org.apache.tools.ant.filters.ReplaceTokens
+
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
+
+plugins {
+    id 'java'
+    id 'application'
+    alias(libs.plugins.spring.boot)
+    alias(libs.plugins.spring.dependency.management)
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+def appName = 'bookstore'
+
+base {
+    archivesName = appName
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation libs.bundles.spring.boot.app
+    runtimeOnly libs.h2
+
+    testImplementation libs.spring.boot.starter.test
+    testRuntimeOnly libs.junit.platform.launcher
+}
+
+application {
+    mainClass = 'com.example.bookstore.BookstoreApplication'
+    applicationName = appName
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
+}
+
+tasks.named('processResources', ProcessResources) {
+    def localTokens = [
+            projectVersion: project.version.toString(),
+            environment   : 'local',
+            buildTimestamp: 'local-build'
+    ]
+    inputs.properties(localTokens)
+    filesMatching('**/*.properties') {
+        filter(ReplaceTokens, tokens: localTokens)
+    }
+}
