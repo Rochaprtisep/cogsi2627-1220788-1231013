@@ -209,11 +209,3 @@ Durante a execução prática, configurou-se e expandiu-se o projeto base com as
 1. **runServer:** Registou-se uma nova tarefa do tipo `JavaExec` no ficheiro `build.gradle` para iniciar o servidor de chat e permitir a conexão do cliente.
 2. **Testes Unitários:** O catálogo de versões (`libs.versions.toml`) foi atualizado com o JUnit 5 e Log4j2. Após a injeção das respetivas dependências, validou-se com sucesso a execução da classe `AppTest.java` através da ferramenta de testes do Gradle.
 3. **Backup e Zip:** Criou-se a tarefa `backupSources` baseada no tipo nativo `Copy` para salvaguardar exclusivamente as diretorias de código. Para arquivar esta cópia de segurança, implementou-se a tarefa `zipBackup` (tipo `Zip`), assegurando a correta ordem de execução através da dependência explícita (`dependsOn tasks.named('backupSources')`).
-
-### 5. Contribuição do Grupo
-As percentagens seguintes refletem a autoavaliação da contribuição de cada elemento da equipa para a realização deste trabalho:
-
-| Nome | Número de Estudante | Contribuição (%) |
-| :--- | :--- | :--- |
-| Pedro Rocha | 1220788 | 50% |
-| Tiago Fontes | 1231013 | 50% |
