@@ -144,3 +144,17 @@ tasks.register('runDist', Exec) {
         commandLine 'sh', script.absolutePath
     }
 }
+
+tasks.named('javadoc', Javadoc) {
+    options.memberLevel = JavadocMemberLevel.PRIVATE
+    failOnError = false
+}
+
+tasks.register('javadocZip', Zip) {
+    group = 'documentation'
+    description = 'Generates the Javadoc and packages it into a zip file.'
+    dependsOn tasks.named('javadoc')
+    from tasks.named('javadoc')
+    archiveClassifier = 'javadoc'
+    destinationDirectory = layout.buildDirectory.dir('docs-zip')
+}
