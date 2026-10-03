@@ -45,3 +45,15 @@ application {
 tasks.named('test', Test) {
     useJUnitPlatform()
 }
+
+tasks.named('processResources', ProcessResources) {
+    def localTokens = [
+            projectVersion: project.version.toString(),
+            environment   : 'local',
+            buildTimestamp: 'local-build'
+    ]
+    inputs.properties(localTokens)
+    filesMatching('**/*.properties') {
+        filter(ReplaceTokens, tokens: localTokens)
+    }
+}

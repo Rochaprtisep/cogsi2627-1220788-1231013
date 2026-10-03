@@ -25,6 +25,10 @@ public class InfoController {
     @Value("${service.environment}")
     private String environment;
 
+    /** The timestamp of the build that produced the configuration. */
+    @Value("${service.build.timestamp:unknown}")
+    private String buildTimestamp;
+
     /**
      * Provides detailed information about the service.
      *
@@ -38,6 +42,7 @@ public class InfoController {
         model.add(org.springframework.hateoas.Link.of(serviceName).withRel("service"));
         model.add(org.springframework.hateoas.Link.of(version).withRel("version"));
         model.add(org.springframework.hateoas.Link.of(environment).withRel("environment"));
+        model.add(org.springframework.hateoas.Link.of(buildTimestamp).withRel("buildTimestamp"));
 
         model.add(linkTo(methodOn(RootController.class).root()).withRel("root"));
 
