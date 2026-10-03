@@ -15,6 +15,15 @@ repositories {
 dependencies {
     implementation      libs.log4j.api
     implementation      libs.log4j.core
+    testImplementation libs.junit.jupiter
+    testRuntimeOnly libs.junit.platform.launcher
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+    }
 }
 
 // Set the version of the application, using a property from gradle.properties or defaulting to 'unspecified'.
@@ -108,4 +117,37 @@ tasks.register('runClient', JavaExec) {
     doFirst {
         println "Starting ChatClientApp with server IP: ${serverIP.get()} and port: ${serverPort.get()}"
     }
+}
+
+tasks.register('runServer', JavaExec) {
+    group = 'DevOps'
+    description = 'Launches the chat server on the given port'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass.set('org.example.ChatServerApp')
+    def serverPort = providers.gradleProperty('serverPort').orElse('59001')
+    args(serverPort.get())
+    doFirst {
+        println "Starting ChatServerApp on port ${serverPort.get()}"
+    }
+}
+
+// Cria backup dos diretorios main e test para a pasta backup
+tasks.register('backupSources', Copy) {
+    group = 'DevOps'
+    description = 'Copies the application source directories into a backup folder'
+    from(layout.projectDirectory.dir('src')) {
+        include 'main/**'
+        include 'test/**'
+    }
+    into(layout.projectDirectory.dir('backup'))
+}
+
+// cria um zip do backup dis diretorios
+tasks.register('zipBackup', Zip) {
+    group = 'DevOps'
+    description = 'Creates a zip archive of the sources backup'
+    dependsOn tasks.named('backupSources')
+    from(layout.projectDirectory.dir('backup'))
+    archiveFileName = "backup-${project.version}.zip"
+    destinationDirectory = layout.buildDirectory.dir('backups')
 }
