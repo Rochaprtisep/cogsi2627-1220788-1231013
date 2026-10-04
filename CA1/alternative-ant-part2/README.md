@@ -1,153 +1,153 @@
 # Bookstore (Ant + Ivy)
 
-This project is the **Bookstore REST API** (Spring Boot + Spring Data JPA + H2 + Spring HATEOAS) from Part 2, built with **Apache Ant** and **Apache Ivy** as an alternative to Gradle.
+Este projeto é a **Bookstore REST API** (Spring Boot + Spring Data JPA + H2 + Spring HATEOAS) da Parte 2, construída com **Apache Ant** e **Apache Ivy** como alternativa ao Gradle.
 
-The application provides:
+A aplicação disponibiliza:
 
-* Management of books, clients and orders (with relationships)
-* HATEOAS-based API navigation
-* An in-memory H2 database, initialised programmatically with sample data
-* An H2 console for database inspection
+* Gestão de livros, clientes e encomendas (com relações entre si)
+* Navegação na API baseada em HATEOAS
+* Uma base de dados H2 em memória, inicializada programaticamente com dados de exemplo
+* Uma consola H2 para inspeção da base de dados
 
-## Project Goals
+## Objetivos do Projeto
 
-This project reproduces the Part 2 Gradle build with Ant, to compare both tools. It is used to:
+Este projeto reproduz o build Gradle da Parte 2 com Ant, de forma a comparar as duas ferramentas. Serve para:
 
-* Replace the Gradle build script (`build.gradle`) with an Ant build file (`build.xml`)
-* Manage dependencies with Ivy (`ivy.xml`) instead of a version catalog and a BOM
-* Write by hand the targets that Gradle and its plugins provide (`compile`, `jar`, `run`, `installDist`)
-* Recreate the custom tasks (`deployToDev`, `javadocZip`, `runDist`) as Ant targets
-* Filter configuration files at build time (`filterset`)
-* Separate unit tests from integration tests without a "source set"
+* Substituir o script de build Gradle (`build.gradle`) por um ficheiro de build Ant (`build.xml`)
+* Gerir as dependências com Ivy (`ivy.xml`) em vez de um version catalog e de um BOM
+* Escrever à mão os targets que o Gradle e os seus plugins fornecem (`compile`, `jar`, `run`, `installDist`)
+* Recriar as tarefas personalizadas (`deployToDev`, `javadocZip`, `runDist`) como targets Ant
+* Filtrar ficheiros de configuração em tempo de build (`filterset`)
+* Separar os testes unitários dos testes de integração sem recorrer a um "source set"
 
-## Prerequisites
+## Pré-requisitos
 
-To build and run this project, you need:
+Para construir e executar este projeto é necessário:
 
-* Java JDK 17 or later, available in the `PATH`
-* Apache Ant 1.10.6 or later (needed for the `junitlauncher` task), with `ANT_HOME\bin` in the `PATH`
-* Internet access for dependency resolution (Maven Central)
+* Java JDK 17 ou superior, disponível no `PATH`
+* Apache Ant 1.10.6 ou superior (necessário para a tarefa `junitlauncher`), com `ANT_HOME\bin` no `PATH`
+* Acesso à Internet para a resolução de dependências (Maven Central)
 
-Note: Ivy does not need to be installed. The `build.xml` downloads the Ivy JAR into `ivy/` on the first run (a minimal "wrapper"). Ant itself must be installed manually, and there is no toolchain: the JDK in the `PATH` is used.
+Nota: o Ivy não precisa de ser instalado. O `build.xml` descarrega o JAR do Ivy para `ivy/` na primeira execução (um "wrapper" mínimo). O Ant tem de ser instalado manualmente e não existe toolchain: é usado o JDK que estiver no `PATH`.
 
-## Project Structure
+## Estrutura do Projeto
 
 ```
 alternative-ant-part2/
-├── build.xml                  # Build file with all targets (equivalent to build.gradle)
-├── ivy.xml                    # Dependencies (equivalent to libs.versions.toml + dependencies block)
-├── .gitignore                 # Ignores build/, lib/ and ivy/
+├── build.xml                  # Ficheiro de build com todos os targets (equivalente ao build.gradle)
+├── ivy.xml                    # Dependências (equivalente ao libs.versions.toml + bloco dependencies)
+├── .gitignore                 # Ignora build/, lib/ e ivy/
 └── src/
-    ├── main/java              # Bookstore source code
-    ├── main/resources         # application.properties (with placeholders)
-    ├── test/java              # Unit tests
-    ├── integrationTest/java   # Integration tests
-    └── dist/bin               # Start scripts (bookstore.bat and bookstore)
+    ├── main/java              # Código-fonte da Bookstore
+    ├── main/resources         # application.properties (com placeholders)
+    ├── test/java              # Testes unitários
+    ├── integrationTest/java   # Testes de integração
+    └── dist/bin               # Scripts de arranque (bookstore.bat e bookstore)
 ```
 
-Generated folders (not committed):
+Pastas geradas (não incluídas no repositório):
 
-* `ivy/` – the Ivy JAR
-* `lib/compile`, `lib/runtime`, `lib/test` – the dependencies of each configuration
-* `build/` – compiled classes, JAR, reports and other artefacts
+* `ivy/` – o JAR do Ivy
+* `lib/compile`, `lib/runtime`, `lib/test` – as dependências de cada configuração
+* `build/` – classes compiladas, JAR, relatórios e outros artefactos
 
-## Dependencies
+## Dependências
 
-Dependencies are declared in `ivy.xml` and grouped into three configurations:
+As dependências são declaradas no `ivy.xml` e agrupadas em três configurações:
 
-| Ivy configuration | Extends   | Gradle equivalent                         |
-|-------------------|-----------|-------------------------------------------|
-| `compile`         | –         | `implementation` / `compileClasspath`     |
-| `runtime`         | `compile` | `runtimeOnly` / `runtimeClasspath`        |
-| `test`            | `runtime` | `testImplementation` / `testRuntimeClasspath` |
+| Configuração Ivy | Estende   | Equivalente Gradle                            |
+|------------------|-----------|-----------------------------------------------|
+| `compile`        | –         | `implementation` / `compileClasspath`         |
+| `runtime`        | `compile` | `runtimeOnly` / `runtimeClasspath`            |
+| `test`           | `runtime` | `testImplementation` / `testRuntimeClasspath` |
 
-Without the Spring Boot BOM, every version must be written explicitly. The versions of `h2` (2.3.232) and `junit-platform-launcher` (1.12.2) were taken from the Gradle build:
+Sem o BOM do Spring Boot, todas as versões têm de ser escritas explicitamente. As versões do `h2` (2.3.232) e do `junit-platform-launcher` (1.12.2) foram retiradas do build Gradle:
 
 ```
 cd ../part2
 ./gradlew :app:dependencies --configuration testRuntimeClasspath
 ```
 
-To download the dependencies into `lib/`:
+Para descarregar as dependências para `lib/`:
 
 ```
 ant resolve
 ```
 
-The first run takes a few minutes. Afterwards, `h2` appears only in `lib/runtime` and `lib/test`, and `mockito` only in `lib/test`.
+A primeira execução demora alguns minutos. Depois disso, o `h2` aparece apenas em `lib/runtime` e `lib/test`, e o `mockito` apenas em `lib/test`.
 
 ## Build
 
-To build the project:
+Para construir o projeto:
 
 ```
 ant clean build
 ```
 
-This will:
+Isto irá:
 
-* Download Ivy (first run only) and resolve the dependencies
-* Compile the source code (with `-parameters`, required by Spring)
-* Copy the resources, replacing the configuration placeholders
-* Generate the application JAR (`build/libs/bookstore-1.0.0.jar`)
-* Run the unit and integration tests
+* Descarregar o Ivy (apenas na primeira execução) e resolver as dependências
+* Compilar o código-fonte (com `-parameters`, necessário para o Spring)
+* Copiar os recursos, substituindo os placeholders de configuração
+* Gerar o JAR da aplicação (`build/libs/bookstore-1.0.0.jar`)
+* Executar os testes unitários e de integração
 
-Note: there is no fat JAR. `bookstore-1.0.0.jar` contains only the application classes, like the `-plain.jar` produced by Gradle.
+Nota: não é gerado um fat JAR. O `bookstore-1.0.0.jar` contém apenas as classes da aplicação, tal como o `-plain.jar` produzido pelo Gradle.
 
-`build` is the default target, so `ant` alone does the same as `ant build`.
+`build` é o target por omissão, por isso `ant` sozinho faz o mesmo que `ant build`.
 
-## Exploring Available Ant Targets
+## Explorar os Targets Ant Disponíveis
 
-List the main targets (those with a description):
+Listar os targets principais (os que têm descrição):
 
 ```
 ant -p
 ```
 
-| Target            | Description                                               |
-|-------------------|-----------------------------------------------------------|
-| `resolve`         | Downloads the dependencies declared in `ivy.xml` into `lib/` |
-| `clean`           | Deletes the build directory                               |
-| `compile`         | Compiles the application                                  |
-| `jar`             | Packages the application classes into a JAR               |
-| `run`             | Runs the application (equivalent to `bootRun`)            |
-| `deployToDev`     | Deploys the JAR, runtime libs and config to `build/deployment/dev` |
-| `javadoc`         | Generates the Javadoc                                     |
-| `javadocZip`      | Generates the Javadoc and packages it into a zip          |
-| `installDist`     | Creates the distribution in `build/install`               |
-| `runDist`         | Runs the application using the distribution scripts       |
-| `test`            | Runs the unit tests                                       |
-| `integrationTest` | Runs the integration tests                                |
-| `build`           | Compiles, packages and runs all tests                     |
+| Target            | Descrição                                                         |
+|-------------------|-------------------------------------------------------------------|
+| `resolve`         | Descarrega as dependências declaradas no `ivy.xml` para `lib/`    |
+| `clean`           | Apaga a diretoria de build                                        |
+| `compile`         | Compila a aplicação                                               |
+| `jar`             | Empacota as classes da aplicação num JAR                          |
+| `run`             | Executa a aplicação (equivalente ao `bootRun`)                    |
+| `deployToDev`     | Faz o deploy do JAR, das bibliotecas de runtime e da configuração para `build/deployment/dev` |
+| `javadoc`         | Gera o Javadoc                                                    |
+| `javadocZip`      | Gera o Javadoc e empacota-o num zip                               |
+| `installDist`     | Cria a distribuição em `build/install`                            |
+| `runDist`         | Executa a aplicação através dos scripts da distribuição           |
+| `test`            | Executa os testes unitários                                       |
+| `integrationTest` | Executa os testes de integração                                   |
+| `build`           | Compila, empacota e executa todos os testes                       |
 
-Several targets can be run in one call, for example `ant clean jar javadocZip`.
+É possível executar vários targets numa só chamada, por exemplo `ant clean jar javadocZip`.
 
-## Run
+## Executar
 
-To run the application:
+Para executar a aplicação:
 
 ```
 ant run
 ```
 
-The application starts at `http://localhost:8080` and keeps running until it is stopped with `Ctrl+C`.
+A aplicação arranca em `http://localhost:8080` e continua em execução até ser parada com `Ctrl+C`.
 
-Main endpoints:
+Endpoints principais:
 
-* `GET /` – API entry point with HATEOAS links
+* `GET /` – ponto de entrada da API com links HATEOAS
 * `GET /books`, `GET /clients`, `GET /orders`
-* `GET /info/details` – service name, version, environment and build timestamp
+* `GET /info/details` – nome do serviço, versão, ambiente e timestamp do build
 * `GET /health`
 
-H2 console: `http://localhost:8080/h2-console`
+Consola H2: `http://localhost:8080/h2-console`
 
 * **JDBC URL**: `jdbc:h2:mem:bookstore`
 * **Username**: `sa`
-* **Password**: (leave empty)
+* **Password**: (deixar vazio)
 
-## Configuration Placeholders
+## Placeholders de Configuração
 
-The service metadata in `application.properties` uses placeholders that are replaced by Ant with a `filterset`:
+Os metadados do serviço no `application.properties` usam placeholders que são substituídos pelo Ant através de um `filterset`:
 
 ```
 service.version=@projectVersion@
@@ -155,27 +155,27 @@ service.environment=@environment@
 service.build.timestamp=@buildTimestamp@
 ```
 
-The `filterset` uses `@` as the token delimiter by default, so the placeholders from Part 2 work without changes (the `ReplaceTokens` filter used in Gradle is itself an Ant class).
+O `filterset` usa `@` como delimitador de tokens por omissão, por isso os placeholders da Parte 2 funcionam sem alterações (o filtro `ReplaceTokens` usado no Gradle é, ele próprio, uma classe do Ant).
 
-* In local runs (`run`, tests, `jar`, `installDist`) they are replaced by `process-resources` with the project version, `local` and `local-build`.
-* In the dev deployment (`deployToDev`) they are replaced with the project version, `dev` and the current timestamp.
+* Nas execuções locais (`run`, testes, `jar`, `installDist`) são substituídos pelo `process-resources` com a versão do projeto, `local` e `local-build`.
+* No deploy para dev (`deployToDev`) são substituídos com a versão do projeto, `dev` e o timestamp atual.
 
-## Deploying to the Development Environment
+## Deploy para o Ambiente de Desenvolvimento
 
-To create a deployment in `build/deployment/dev`:
+Para criar um deploy em `build/deployment/dev`:
 
 ```
 ant deployToDev
 ```
 
-This target depends on four targets, executed from left to right:
+Este target depende de quatro targets, executados da esquerda para a direita:
 
-1. `deploy-clean` – deletes the deployment directory
-2. `deploy-app` – copies the application JAR
-3. `deploy-libs` – copies the runtime dependencies into `lib/`
-4. `deploy-config` – copies the `.properties` files, replacing the placeholders
+1. `deploy-clean` – apaga a diretoria de deploy
+2. `deploy-app` – copia o JAR da aplicação
+3. `deploy-libs` – copia as dependências de runtime para `lib/`
+4. `deploy-config` – copia os ficheiros `.properties`, substituindo os placeholders
 
-Resulting structure:
+Estrutura resultante:
 
 ```
 build/deployment/dev/
@@ -184,90 +184,90 @@ build/deployment/dev/
 └── lib/
 ```
 
-To run the application from the deployment directory:
+Para executar a aplicação a partir da diretoria de deploy:
 
 ```
 cd build/deployment/dev
 java -cp "bookstore-1.0.0.jar:lib/*" com.example.bookstore.BookstoreApplication
 ```
 
-On Windows, replace `:` with `;` in the classpath separator.
+Em Windows, substituir `:` por `;` como separador do classpath.
 
-The external `application.properties` takes precedence over the one inside the JAR, so `/info/details` shows `environment = dev` and the deployment timestamp.
+O `application.properties` externo tem precedência sobre o que está dentro do JAR, por isso o `/info/details` mostra `environment = dev` e o timestamp do deploy.
 
-## Running from the Distribution
+## Executar a partir da Distribuição
 
-Ant has no `application` plugin, so the start scripts are written by hand in `src/dist/bin`. To run the application using them:
+O Ant não tem um plugin `application`, por isso os scripts de arranque são escritos à mão em `src/dist/bin`. Para executar a aplicação através deles:
 
 ```
 ant runDist
 ```
 
-This target depends on `installDist`, which creates `build/install/bookstore`:
+Este target depende do `installDist`, que cria `build/install/bookstore`:
 
 ```
 build/install/bookstore/
 ├── bin/
 │   ├── bookstore          # Linux/macOS
 │   └── bookstore.bat      # Windows
-└── lib/                   # Application JAR + runtime dependencies
+└── lib/                   # JAR da aplicação + dependências de runtime
 ```
 
-`runDist` detects the operating system and runs `bin/bookstore.bat` on Windows or `bin/bookstore` on Linux/macOS.
+O `runDist` deteta o sistema operativo e executa `bin/bookstore.bat` em Windows ou `bin/bookstore` em Linux/macOS.
 
-Notes:
+Notas:
 
-* The scripts use a classpath wildcard (`lib/*`), so the `The input line is too long` error from Part 2 does not happen.
-* `installDist` uses `fixcrlf` to give each script the correct line endings, because Git on Windows may convert the Unix script to CRLF.
-* The scripts use the `java` found in the `PATH` (they do not read `JAVA_HOME`).
+* Os scripts usam um wildcard no classpath (`lib/*`), por isso o erro `The input line is too long` da Parte 2 não acontece.
+* O `installDist` usa `fixcrlf` para dar a cada script os fins de linha corretos, porque o Git em Windows pode converter o script Unix para CRLF.
+* Os scripts usam o `java` encontrado no `PATH` (não leem o `JAVA_HOME`).
 
 ## Javadoc
 
-To generate the Javadoc and package it into a zip file:
+Para gerar o Javadoc e empacotá-lo num ficheiro zip:
 
 ```
 ant javadocZip
 ```
 
-The documentation is generated in `build/docs/javadoc/index.html` and the archive in `build/docs-zip/bookstore-1.0.0-javadoc.zip`.
+A documentação é gerada em `build/docs/javadoc/index.html` e o arquivo em `build/docs-zip/bookstore-1.0.0-javadoc.zip`.
 
-## Testing
+## Testes
 
-Run only the unit tests:
+Executar apenas os testes unitários:
 
 ```
 ant test
 ```
 
-Run only the integration tests (which start the full Spring context):
+Executar apenas os testes de integração (que arrancam o contexto Spring completo):
 
 ```
 ant integrationTest
 ```
 
-Run both (and package the application):
+Executar ambos (e empacotar a aplicação):
 
 ```
 ant build
 ```
 
-The tests run in a separate JVM (`<fork>`), as Gradle does by default.
+Os testes são executados numa JVM separada (`<fork>`), tal como o Gradle faz por omissão.
 
-Test reports:
+Relatórios de testes:
 
-* Unit tests: XML reports in `build/reports/tests/test`
-* Integration tests: XML reports in `build/reports/tests/integrationTest` and an HTML report in `build/reports/tests/integrationTest/html/junit-noframes.html`
+* Testes unitários: relatórios XML em `build/reports/tests/test`
+* Testes de integração: relatórios XML em `build/reports/tests/integrationTest` e um relatório HTML em `build/reports/tests/integrationTest/html/junit-noframes.html`
 
-## Comparison with Gradle
+## Comparação com o Gradle
 
-| Feature                  | Gradle (Part 2)                                  | Ant + Ivy                                          |
-|--------------------------|--------------------------------------------------|----------------------------------------------------|
-| Tool installation        | Gradle Wrapper (`gradlew`)                       | Ant installed manually; Ivy downloaded by `build.xml` |
-| Dependency versions      | Managed by the Spring Boot BOM                   | Written explicitly in `ivy.xml`                    |
-| Standard tasks           | Provided by the `java`, `application` and Spring Boot plugins | Written by hand (`compile`, `jar`, `run`, ...)     |
-| `-parameters` flag       | Added automatically by the Spring Boot plugin    | Must be added to `<javac>`                         |
-| Executable JAR           | `bootJar` (fat JAR)                              | Only the plain JAR                                 |
-| Start scripts            | Generated by `installDist`                       | Written by hand in `src/dist/bin`                  |
-| Integration tests        | Dedicated source set                             | An extra `<javac>` and `<junitlauncher>` with manual classpaths |
-| Task ordering            | `dependsOn` + `mustRunAfter`                     | Order of the `depends` list                        |
-| Incremental build/cache  | Up-to-date checks and build cache                | No build cache; targets run on every invocation (some tasks, such as `<javac>` and `<copy>`, only skip unchanged files) |
+| Funcionalidade              | Gradle (Parte 2)                                   | Ant + Ivy                                            |
+|-----------------------------|----------------------------------------------------|------------------------------------------------------|
+| Instalação da ferramenta    | Gradle Wrapper (`gradlew`)                         | Ant instalado manualmente; Ivy descarregado pelo `build.xml` |
+| Versões das dependências    | Geridas pelo BOM do Spring Boot                    | Escritas explicitamente no `ivy.xml`                 |
+| Tarefas standard            | Fornecidas pelos plugins `java`, `application` e Spring Boot | Escritas à mão (`compile`, `jar`, `run`, ...)        |
+| Flag `-parameters`          | Adicionada automaticamente pelo plugin Spring Boot | Tem de ser adicionada ao `<javac>`                   |
+| JAR executável              | `bootJar` (fat JAR)                                | Apenas o JAR simples                                 |
+| Scripts de arranque         | Gerados pelo `installDist`                         | Escritos à mão em `src/dist/bin`                     |
+| Testes de integração        | Source set dedicado                                | Um `<javac>` e um `<junitlauncher>` extra com classpaths manuais |
+| Ordem das tarefas           | `dependsOn` + `mustRunAfter`                       | Ordem da lista `depends`                             |
+| Build incremental/cache     | Verificações up-to-date e build cache              | Sem build cache; os targets correm em cada invocação (algumas tarefas, como `<javac>` e `<copy>`, apenas ignoram ficheiros inalterados) |

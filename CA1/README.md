@@ -464,3 +464,85 @@ Para solucionar os mesmos requisitos da Parte 1 utilizando puramente o Ant[cite:
 A implementação do Backup e Zip em Ant (`build.xml`) demonstrou que a ferramenta é mais verbosa e obriga a passos imperativos. Ao contrário do Gradle, que infere a criação de pastas automaticamente nas tarefas de cópia, no Ant tivemos de usar `<mkdir>` para as criar à mão antes de mover os ficheiros. 
 
 A maior diferença notada na prática, no entanto, foi a ausência de um "Wrapper". Ao tentar executar o script, o terminal não reconheceu o comando porque o Apache Ant exige instalação e configuração manual prévia no sistema operativo. Isto contrasta fortemente com o script `gradlew` usado na Parte 1, que garante que qualquer developer consegue correr o projeto de imediato, provando a superioridade do Gradle na padronização e partilha de projetos em equipa.
+
+## Alternativa Tecnológica: Bazel
+
+Além do Ant, foi analisado o **Bazel**, a ferramenta de build open source da Google (derivada do sistema interno *Blaze*). Esta alternativa é apenas analisada teoricamente e não foi implementada no projeto.
+
+### Visão Geral
+O Bazel foi pensado para repositórios grandes (*monorepos*) e com várias linguagens. Os builds são descritos em ficheiros `BUILD` (ou `BUILD.bazel`), escritos em **Starlark**, um dialeto restrito de Python. Cada ficheiro declara *targets* com regras como `java_library`, `java_binary` e `java_test`, e cada target lista explicitamente as suas fontes e dependências. As dependências externas são declaradas no ficheiro `MODULE.bazel` (sistema *Bzlmod*), e as bibliotecas Maven são obtidas através do módulo `rules_jvm_external`.
+
+Os dois princípios centrais do Bazel são:
+
+* **Hermeticidade:** cada ação corre num ambiente isolado (*sandbox*) e só vê os ficheiros que declarou. Assim, o mesmo input produz sempre o mesmo output, independentemente da máquina.
+* **Cache e execução remota:** como os builds são reprodutíveis, os resultados podem ser partilhados entre developers e servidores de CI através de uma cache remota, e as ações podem até ser executadas em máquinas remotas.
+
+### Exemplo de Configuração
+Para a aplicação de chat da Parte 1, a configuração seria semelhante à seguinte:
+
+`MODULE.bazel`:
+
+    bazel_dep(name = "rules_java", version = "8.6.1")
+    bazel_dep(name = "rules_jvm_external", version = "6.6")
+
+    maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
+    maven.install(
+        artifacts = [
+            "org.apache.logging.log4j:log4j-api:2.24.3",
+            "org.apache.logging.log4j:log4j-core:2.24.3",
+            "org.junit.jupiter:junit-jupiter:5.11.4",
+            "org.junit.platform:junit-platform-console-standalone:1.11.4",
+        ],
+        repositories = ["https://repo1.maven.org/maven2"],
+    )
+    use_repo(maven, "maven")
+
+`BUILD.bazel`:
+
+    java_library(
+        name = "chat",
+        srcs = glob(["src/main/java/**/*.java"]),
+        deps = ["@maven//:org_apache_logging_log4j_log4j_api"],
+        runtime_deps = ["@maven//:org_apache_logging_log4j_log4j_core"],
+    )
+
+    java_binary(
+        name = "runServer",
+        main_class = "org.example.ChatServerApp",
+        args = ["59001"],
+        runtime_deps = [":chat"],
+    )
+
+    genrule(
+        name = "zipBackup",
+        srcs = glob(["src/**"]),
+        outs = ["backup.zip"],
+        cmd = "zip -r $@ $(SRCS)",
+    )
+
+Os comandos equivalentes seriam `bazel build //...`, `bazel run //:runServer` e `bazel test //...`.
+
+### Comparação com Gradle e Ant
+
+| Característica             | Gradle                                           | Ant + Ivy                                         | Bazel                                                       |
+|----------------------------|--------------------------------------------------|---------------------------------------------------|-------------------------------------------------------------|
+| Linguagem do build         | Groovy/Kotlin DSL (`build.gradle`)               | XML (`build.xml`, `ivy.xml`)                      | Starlark (`BUILD`, `MODULE.bazel`)                          |
+| Modelo                     | Tarefas + plugins com convenções                 | Targets imperativos, escritos à mão               | Regras declarativas com inputs e outputs explícitos         |
+| Instalação da ferramenta   | Gradle Wrapper (`gradlew`)                       | Ant instalado manualmente; Ivy pode ser descarregado pelo build | **Bazelisk** + ficheiro `.bazelversion` (funciona como um wrapper) |
+| Gestão de dependências     | Nativa, com dependências transitivas e BOMs      | Ivy, com versões escritas explicitamente          | `rules_jvm_external`, com *lock file* (`maven_install.json`) |
+| Granularidade das deps     | Por configuração (`implementation`, `runtimeOnly`, ...) | Por configuração Ivy (`compile`, `runtime`, `test`) | Por target; cada target só vê as dependências que declara (*strict deps*) |
+| JDK                        | Toolchains com auto-download (foojay)            | O JDK que estiver no `PATH`                       | JDKs remotos geridos pelo Bazel (ex.: `--java_runtime_version=remotejdk_17`) |
+| Build incremental          | Verificações up-to-date e build cache            | Sem cache; apenas `<javac>`/`<copy>` ignoram ficheiros inalterados | Cache por ação, baseada em hashes do conteúdo; muito fina |
+| Cache/execução remota      | Build cache remota (Develocity ou servidor próprio) | Não existe                                     | Cache e execução remota nativas (Remote Execution API)      |
+| Reprodutibilidade          | Boa, mas não garantida (tarefas podem ler qualquer ficheiro) | Fraca (depende do ambiente da máquina)  | Forte, graças ao *sandboxing* e à hermeticidade             |
+| Extensibilidade            | Plugins e tarefas personalizadas em Groovy/Kotlin/Java | `<macrodef>` e *custom tasks* em Java (`<taskdef>`) | Macros e regras próprias em Starlark                  |
+| Tarefas personalizadas     | Tipos nativos (`Copy`, `Zip`, `Exec`, ...)       | Tasks nativas (`<copy>`, `<zip>`, `<exec>`, ...)  | `genrule` ou regras Starlark; as ações não podem escrever fora do `bazel-out` |
+| JAR executável             | `bootJar` (fat JAR do Spring Boot)               | Apenas o JAR simples                              | `java_binary` gera um `_deploy.jar` com todas as dependências; Spring Boot exige regras de terceiros (ex.: `rules_spring`) |
+| Suporte do ecossistema Java/Spring | Excelente (plugins oficiais do Spring Boot) | Limitado                                       | Mais fraco; menos integração com IDEs e frameworks          |
+| Curva de aprendizagem      | Média                                            | Baixa, mas muito verboso                          | Alta                                                        |
+| Indicado para              | Projetos JVM de qualquer dimensão                | Projetos legados ou builds muito simples          | Monorepos grandes, multi-linguagem, com muitos developers   |
+
+### Reflexão
+O Bazel resolve problemas que o Gradle e o Ant não resolvem tão bem: builds totalmente reprodutíveis, cache partilhada entre toda a equipa e escalabilidade em repositórios com milhares de módulos. Em contrapartida, obriga a declarar cada dependência de cada target, tem uma curva de aprendizagem acentuada e um suporte mais fraco para o ecossistema Spring Boot (não há um equivalente oficial ao `bootRun` ou ao BOM do Spring).
+
+Para um projeto da dimensão deste CA1, o Gradle continua a ser a escolha mais adequada: tem convenções que reduzem a configuração, integra-se diretamente com o Spring Boot e o Wrapper garante o mesmo ambiente a todos os developers. O Ant fica abaixo de ambos, por ser verboso e não ter cache nem wrapper. O Bazel só compensaria se o projeto crescesse para um monorepo com várias linguagens e muitos developers, onde a cache remota e a hermeticidade trazem ganhos reais.
