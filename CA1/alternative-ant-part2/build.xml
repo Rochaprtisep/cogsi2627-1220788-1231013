@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="bookstore" default="build" basedir="."
+         xmlns:ivy="antlib:org.apache.ivy.ant"
+         xmlns:if="ant:if"
+         xmlns:unless="ant:unless">
+
+    <description>Bookstore - alternative build with Apache Ant + Ivy</description>
+
+    <!-- ================= Properties ================= -->
+    <property name="app.name" value="bookstore"/>
+    <property name="app.version" value="1.0.0"/>
+    <property name="main.class" value="com.example.bookstore.BookstoreApplication"/>
+
+    <property name="src.main.java" value="src/main/java"/>
+    <property name="src.main.resources" value="src/main/resources"/>
+    <property name="src.test.java" value="src/test/java"/>
+    <property name="src.it.java" value="src/integrationTest/java"/>
+    <property name="src.dist" value="src/dist"/>
+
+    <property name="lib.dir" value="lib"/>
+    <property name="build.dir" value="build"/>
+    <property name="classes.main" value="${build.dir}/classes/main"/>
+    <property name="classes.test" value="${build.dir}/classes/test"/>
+    <property name="classes.it" value="${build.dir}/classes/integrationTest"/>
+    <property name="libs.dir" value="${build.dir}/libs"/>
+    <property name="app.jar" value="${libs.dir}/${app.name}-${app.version}.jar"/>
+    <property name="deploy.dir" value="${build.dir}/deployment/dev"/>
+    <property name="install.dir" value="${build.dir}/install/${app.name}"/>
+    <property name="javadoc.dir" value="${build.dir}/docs/javadoc"/>
+    <property name="reports.dir" value="${build.dir}/reports/tests"/>
+
+    <property name="ivy.version" value="2.5.2"/>
+    <property name="ivy.jar.dir" value="ivy"/>
+    <property name="ivy.jar.file" value="${ivy.jar.dir}/ivy-${ivy.version}.jar"/>
+    <property name="ivy.url"
+              value="https://repo1.maven.org/maven2/org/apache/ivy/ivy/${ivy.version}/ivy-${ivy.version}.jar"/>
+
+    <!-- ================= Classpaths ================= -->
+    <path id="compile.classpath">
+        <fileset dir="${lib.dir}/compile" includes="*.jar"/>
+    </path>
+
+    <path id="runtime.classpath">
+        <pathelement location="${classes.main}"/>
+        <fileset dir="${lib.dir}/runtime" includes="*.jar"/>
+    </path>
+
+    <path id="test.classpath">
+        <pathelement location="${classes.main}"/>
+        <pathelement location="${classes.test}"/>
+        <fileset dir="${lib.dir}/test" includes="*.jar"/>
+    </path>
+
+    <path id="it.classpath">
+        <pathelement location="${classes.main}"/>
+        <pathelement location="${classes.it}"/>
+        <fileset dir="${lib.dir}/test" includes="*.jar"/>
+    </path>
+
+    <!-- ================= Ivy bootstrap ================= -->
+    <!-- Downloads Ivy automatically on the first run (a minimal "wrapper") -->
+    <target name="check-ivy">
+        <available file="${ivy.jar.file}" property="ivy.present"/>
+    </target>
+
+    <target name="download-ivy" depends="check-ivy" unless="ivy.present">
+        <mkdir dir="${ivy.jar.dir}"/>
+        <get src="${ivy.url}" dest="${ivy.jar.file}"/>
+    </target>
+
+    <!-- Loads Ivy only once: a second taskdef (e.g. "ant build deployToDev") would use a new
+         classloader and fail with ClassCastException -->
+    <target name="init-ivy" depends="download-ivy" unless="ivy.initialized">
+        <taskdef resource="org/apache/ivy/ant/antlib.xml"
+                 uri="antlib:org.apache.ivy.ant"
+                 classpath="${ivy.jar.file}"/>
+        <property name="ivy.initialized" value="true"/>
+    </target>
+
+    <target name="resolve" depends="init-ivy"
+            description="Downloads the dependencies declared in ivy.xml into lib/">
+        <ivy:retrieve pattern="${lib.dir}/[conf]/[artifact]-[revision](-[classifier]).[ext]"
+                      sync="true" type="jar,bundle"/>
+    </target>
+
+    <!-- ================= Clean ================= -->
+    <target name="clean" description="Deletes the build directory">
+        <delete dir="${build.dir}"/>
+    </target>
+
+    <!-- ================= Compile and resources ================= -->
+    <target name="compile" depends="resolve" description="Compiles the application">
+        <mkdir dir="${classes.main}"/>
+        <javac srcdir="${src.main.java}" destdir="${classes.main}"
+               release="17" encoding="UTF-8" debug="true"
+               includeantruntime="false" classpathref="compile.classpath">
+            <!-- Required by Spring to read @PathVariable names (Gradle's Spring Boot plugin adds it automatically) -->
+            <compilerarg value="-parameters"/>
+        </javac>
+    </target>
+
+    <target name="process-resources" description="Copies resources, replacing tokens for local runs">
+        <mkdir dir="${classes.main}"/>
+        <copy todir="${classes.main}" overwrite="true">
+            <fileset dir="${src.main.resources}" includes="**/*.properties"/>
+            <filterset>
+                <filter token="projectVersion" value="${app.version}"/>
+                <filter token="environment" value="local"/>
+                <filter token="buildTimestamp" value="local-build"/>
+            </filterset>
+        </copy>
+        <copy todir="${classes.main}">
+            <fileset dir="${src.main.resources}" excludes="**/*.properties"/>
+        </copy>
+    </target>
+
+    <target name="classes" depends="compile,process-resources"/>
+
+    <!-- ================= Jar ================= -->
+    <target name="jar" depends="classes" description="Packages the application classes into a jar">
+        <mkdir dir="${libs.dir}"/>
+        <jar destfile="${app.jar}" basedir="${classes.main}">
+            <manifest>
+                <attribute name="Main-Class" value="${main.class}"/>
+                <attribute name="Implementation-Version" value="${app.version}"/>
+            </manifest>
+        </jar>
+    </target>
+
+    <!-- ================= Run (equivalent to bootRun) ================= -->
+    <target name="run" depends="classes" description="Runs the application">
+        <java classname="${main.class}" fork="true" failonerror="true"
+              classpathref="runtime.classpath"/>
+    </target>
+
+    <!-- ================= deployToDev ================= -->
+    <!-- 1. Delete -->
+    <target name="deploy-clean">
+        <delete dir="${deploy.dir}"/>
+    </target>
+
+    <!-- 2. Copy the application artifact -->
+    <target name="deploy-app" depends="jar">
+        <copy file="${app.jar}" todir="${deploy.dir}"/>
+    </target>
+
+    <!-- 3. Copy only the runtime dependencies -->
+    <target name="deploy-libs" depends="resolve">
+        <copy todir="${deploy.dir}/lib">
+            <fileset dir="${lib.dir}/runtime" includes="*.jar"/>
+        </copy>
+    </target>
+
+    <!-- 4. Copy the configuration files, replacing the tokens -->
+    <target name="deploy-config">
+        <tstamp>
+            <format property="build.timestamp" pattern="yyyy-MM-dd'T'HH:mm:ssXXX"/>
+        </tstamp>
+        <copy todir="${deploy.dir}">
+            <fileset dir="${src.main.resources}" includes="*.properties"/>
+            <filterset>
+                <filter token="projectVersion" value="${app.version}"/>
+                <filter token="environment" value="dev"/>
+                <filter token="buildTimestamp" value="${build.timestamp}"/>
+            </filterset>
+        </copy>
+    </target>
+
+    <target name="deployToDev" depends="deploy-clean,deploy-app,deploy-libs,deploy-config"
+            description="Deploys the jar, runtime libs and config to build/deployment/dev">
+        <echo message="Bookstore deployed to: ${basedir}/${deploy.dir}"/>
+    </target>
+
+    <!-- ================= Javadoc ================= -->
+    <target name="javadoc" depends="resolve" description="Generates the Javadoc">
+        <javadoc sourcepath="${src.main.java}" destdir="${javadoc.dir}"
+                 packagenames="com.example.bookstore.*"
+                 access="private" failonerror="false" encoding="UTF-8"
+                 classpathref="compile.classpath"
+                 windowtitle="Bookstore ${app.version}"/>
+    </target>
+
+    <target name="javadocZip" depends="javadoc" description="Generates the Javadoc and packages it into a zip">
+        <zip destfile="${build.dir}/docs-zip/${app.name}-${app.version}-javadoc.zip"
+             basedir="${javadoc.dir}"/>
+    </target>
+
+    <!-- ================= installDist + runDist ================= -->
+    <target name="installDist" depends="jar,resolve" description="Creates the distribution in build/install">
+        <delete dir="${install.dir}"/>
+        <copy file="${app.jar}" todir="${install.dir}/lib"/>
+        <copy todir="${install.dir}/lib">
+            <fileset dir="${lib.dir}/runtime" includes="*.jar"/>
+        </copy>
+        <copy todir="${install.dir}/bin">
+            <fileset dir="${src.dist}/bin"/>
+        </copy>
+        <!-- Make sure each script has the right line endings for its OS -->
+        <fixcrlf srcdir="${install.dir}/bin" includes="${app.name}" eol="lf"/>
+        <fixcrlf srcdir="${install.dir}/bin" includes="*.bat" eol="crlf"/>
+        <chmod file="${install.dir}/bin/${app.name}" perm="755"/>
+    </target>
+
+    <target name="runDist" depends="installDist"
+            description="Runs the application using the distribution scripts (OS-specific)">
+        <condition property="is.windows">
+            <os family="windows"/>
+        </condition>
+        <exec executable="cmd" dir="${install.dir}" failonerror="true" if:set="is.windows">
+            <arg value="/c"/>
+            <arg value="bin\${app.name}.bat"/>
+        </exec>
+        <exec executable="sh" dir="${install.dir}" failonerror="true" unless:set="is.windows">
+            <arg value="bin/${app.name}"/>
+        </exec>
+    </target>
+
+    <!-- ================= Unit tests ================= -->
+    <target name="compile-tests" depends="classes">
+        <mkdir dir="${classes.test}"/>
+        <javac srcdir="${src.test.java}" destdir="${classes.test}"
+               release="17" encoding="UTF-8" debug="true" includeantruntime="false">
+            <classpath>
+                <pathelement location="${classes.main}"/>
+                <fileset dir="${lib.dir}/test" includes="*.jar"/>
+            </classpath>
+        </javac>
+    </target>
+
+    <target name="test" depends="compile-tests" description="Runs the unit tests">
+        <mkdir dir="${reports.dir}/test"/>
+        <junitlauncher haltOnFailure="true" printSummary="true">
+            <classpath refid="test.classpath"/>
+            <testclasses outputdir="${reports.dir}/test">
+                <fileset dir="${classes.test}" includes="**/*Test.class"/>
+                <fork dir="${basedir}"/>
+                <listener type="legacy-xml" sendSysOut="true" sendSysErr="true"/>
+                <listener type="legacy-brief" sendSysOut="true"/>
+            </testclasses>
+        </junitlauncher>
+    </target>
+
+    <!-- ================= Integration tests ("source set") ================= -->
+    <target name="compile-integration-tests" depends="classes">
+        <mkdir dir="${classes.it}"/>
+        <javac srcdir="${src.it.java}" destdir="${classes.it}"
+               release="17" encoding="UTF-8" debug="true" includeantruntime="false">
+            <classpath>
+                <pathelement location="${classes.main}"/>
+                <fileset dir="${lib.dir}/test" includes="*.jar"/>
+            </classpath>
+        </javac>
+    </target>
+
+    <target name="integrationTest" depends="compile-integration-tests" description="Runs the integration tests">
+        <mkdir dir="${reports.dir}/integrationTest"/>
+        <junitlauncher haltOnFailure="true" printSummary="true">
+            <classpath refid="it.classpath"/>
+            <testclasses outputdir="${reports.dir}/integrationTest">
+                <fileset dir="${classes.it}" includes="**/*Test.class"/>
+                <fork dir="${basedir}"/>
+                <listener type="legacy-xml" sendSysOut="true" sendSysErr="true"/>
+                <listener type="legacy-brief" sendSysOut="true"/>
+            </testclasses>
+        </junitlauncher>
+        <junitreport todir="${reports.dir}/integrationTest">
+            <fileset dir="${reports.dir}/integrationTest" includes="TEST-*.xml"/>
+            <report format="noframes" todir="${reports.dir}/integrationTest/html"/>
+        </junitreport>
+    </target>
+
+    <!-- ================= Build (equivalent to gradle build) ================= -->
+    <target name="build" depends="jar,test,integrationTest" description="Compiles, packages and runs all tests"/>
+
+</project>
