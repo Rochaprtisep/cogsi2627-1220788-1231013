@@ -1,0 +1,100 @@
+# -*- mode: ruby -*-
+# CA2 - Part 2: Bookstore on three VMs
+#   db    -> H2 in server (TCP) mode
+#   app   -> Spring Boot (Bookstore), JDBC client of the db VM
+#   proxy -> Nginx reverse proxy, the only entry point from the host
+require "fileutils"
+require "securerandom"
+
+BOX_NAME    = "bento/ubuntu-24.04"
+BOX_VERSION = "202510.26.0"   # same pinned version as Part 1
+
+DB_IP    = "192.168.56.11"
+APP_IP   = "192.168.56.12"
+PROXY_IP = "192.168.56.13"
+
+H2_PORT    = "9092"
+H2_VERSION = ENV.fetch("H2_VERSION", "2.3.232")   # must match the H2 driver used by the Bookstore
+DB_USER    = ENV.fetch("DB_USER", "bookstore")
+
+ROOT        = File.dirname(File.expand_path(__FILE__))
+KEYS_DIR    = File.join(ROOT, "keys")
+SECRETS_DIR = File.join(ROOT, "secrets")
+
+# Host environment variables decide which provisioning steps run
+def flag(name, default = "true")
+  ENV.fetch(name, default).to_s.downcase
+end
+
+# --- Generated once on the host and never committed (see .gitignore) ---
+FileUtils.mkdir_p([KEYS_DIR, SECRETS_DIR])
+%w[db app proxy].each do |name|
+  key = File.join(KEYS_DIR, "#{name}_ed25519")
+  next if File.exist?(key)
+  system("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "cogsi-ca2-#{name}", "-f", key) ||
+    abort("[Vagrantfile] ssh-keygen falhou para '#{name}'. Gera a chave a mao (guiao, passo 1.5).")
+end
+pw_file = File.join(SECRETS_DIR, "db_password")
+File.write(pw_file, SecureRandom.alphanumeric(24)) unless File.exist?(pw_file)
+DB_PASSWORD = ENV.fetch("DB_PASSWORD", File.read(pw_file).strip)
+
+# Vagrant's public "insecure" keys. Only needed on the very first boot, before our key is installed.
+INSECURE_KEYS = Dir.glob(File.join(Vagrant.user_data_path.to_s, "insecure_private_key{,s/*}"))
+                   .reject { |f| f.end_with?(".pub") }
+warn "[Vagrantfile] Chaves 'insecure' do Vagrant nao encontradas: VMs novas nao vao aceitar SSH." if INSECURE_KEYS.empty?
+
+# Each VM trusts only its own key: the first provisioner replaces authorized_keys
+def custom_ssh(node, name)
+  node.ssh.insert_key       = false
+  node.ssh.private_key_path = [File.join(KEYS_DIR, "#{name}_ed25519")] + INSECURE_KEYS
+  node.vm.provision "ssh-key", type: "file",
+    source: File.join(KEYS_DIR, "#{name}_ed25519.pub"),
+    destination: "/home/vagrant/.ssh/authorized_keys"
+end
+
+Vagrant.configure("2") do |config|
+  config.vm.box              = BOX_NAME
+  config.vm.box_version      = BOX_VERSION
+  config.vm.box_check_update = false
+
+  # ---------------------------------------------------------------- db
+  config.vm.define "db" do |db|
+    db.vm.hostname = "db"
+    db.vm.network "private_network", ip: DB_IP
+    db.vm.synced_folder ".", "/vagrant", disabled: true   # isolated: does not see the project files
+    db.vm.provider "virtualbox" do |vb|
+      vb.name   = "cogsi-ca2-db"
+      vb.memory = 1024
+      vb.cpus   = 1
+    end
+    custom_ssh(db, "db")
+    # (passo 2) provisionador do H2
+  end
+
+  # ---------------------------------------------------------------- app
+  config.vm.define "app" do |app|
+    app.vm.hostname = "app"
+    app.vm.network "private_network", ip: APP_IP
+    app.vm.provider "virtualbox" do |vb|
+      vb.name   = "cogsi-ca2-app"
+      vb.memory = 2048
+      vb.cpus   = 2
+    end
+    custom_ssh(app, "app")
+    # (passo 3) provisionadores do Bookstore
+  end
+
+  # ---------------------------------------------------------------- proxy
+  config.vm.define "proxy" do |proxy|
+    proxy.vm.hostname = "proxy"
+    proxy.vm.network "private_network", ip: PROXY_IP
+    proxy.vm.network "forwarded_port", guest: 80, host: 8080, host_ip: "127.0.0.1"
+    proxy.vm.provider "virtualbox" do |vb|
+      vb.name   = "cogsi-ca2-proxy"
+      vb.memory = 512
+      vb.cpus   = 1
+    end
+    custom_ssh(proxy, "proxy")
+    # (passo 4) provisionador do Nginx
+  end
+end
