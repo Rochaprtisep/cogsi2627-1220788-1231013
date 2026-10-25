@@ -25,8 +25,8 @@ cp -r "$CHAT_LIBS/lib" /opt/chat/lib
 BOOT_JAR=$(ls "$BOOK_LIBS"/bookstore-*.jar | grep -v -- '-plain' | head -1)
 cp "$BOOT_JAR" /opt/bookstore/bookstore.jar
 
-# --- H2 persistence (Passo 4) ---
-
+# --- H2 persistence: external config pointing to the synced folder ---
+cp /vagrant/config/application.properties /opt/bookstore/application.properties
 # --- systemd units ---
 cat > /etc/systemd/system/chat-server.service <<'UNIT'
 [Unit]
@@ -47,6 +47,7 @@ cat > /etc/systemd/system/bookstore.service <<'UNIT'
 [Unit]
 Description=Bookstore Spring Boot application
 After=network.target
+ConditionPathIsMountPoint=/home/vagrant/h2-data
 
 [Service]
 User=vagrant
