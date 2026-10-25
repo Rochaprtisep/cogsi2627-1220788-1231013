@@ -68,7 +68,14 @@ Vagrant.configure("2") do |config|
       vb.cpus   = 1
     end
     custom_ssh(db, "db")
-    # (passo 2) provisionador do H2
+        db.vm.provision "db", type: "shell", path: "provision/db.sh", env: {
+      "H2_VERSION"  => H2_VERSION,
+      "H2_PORT"     => H2_PORT,
+      "DB_USER"     => DB_USER,
+      "DB_PASSWORD" => DB_PASSWORD,
+      "APP_IP"      => APP_IP,
+    }
+
   end
 
   # ---------------------------------------------------------------- app
