@@ -118,6 +118,9 @@ Vagrant.configure("2") do |config|
       vb.cpus   = 1
     end
     custom_ssh(proxy, "proxy")
-    # (passo 4) provisionador do Nginx
+    proxy.vm.provision "proxy", type: "shell", path: "provision/proxy.sh", env: {
+      "APP_IP" => APP_IP,
+    }
+
   end
 end
