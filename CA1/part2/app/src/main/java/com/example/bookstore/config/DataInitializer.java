@@ -31,6 +31,10 @@ public class DataInitializer {
     ) {
         return args -> {
 
+            // Do not seed again if the database already has data (persistent H2)
+            if (bookRepo.count() > 0) {
+                return;
+            }
             // Books
             Book book1 = new Book();
             book1.setTitle("Clean Code");
