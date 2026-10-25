@@ -88,7 +88,23 @@ Vagrant.configure("2") do |config|
       vb.cpus   = 2
     end
     custom_ssh(app, "app")
-    # (passo 3) provisionadores do Bookstore
+        app.vm.provision "app-setup", type: "shell", path: "provision/app-setup.sh", env: {
+      "PROXY_IP" => PROXY_IP,
+    }
+    app.vm.provision "app-build", type: "shell", path: "provision/app-build.sh", privileged: false, env: {
+      "CLONE_REPO"  => flag("CLONE_REPO"),
+      "BUILD_APPS"  => flag("BUILD_APPS"),
+      "REPO_URL"    => ENV.fetch("REPO_URL", "https://github.com/Rochaprtisep/cogsi2627-1220788-1231013.git"),
+      "REPO_BRANCH" => ENV.fetch("REPO_BRANCH", "main"),
+    }
+    app.vm.provision "app-deploy", type: "shell", path: "provision/app-deploy.sh", env: {
+      "START_APPS"  => flag("START_APPS"),
+      "DB_IP"       => DB_IP,
+      "H2_PORT"     => H2_PORT,
+      "DB_USER"     => DB_USER,
+      "DB_PASSWORD" => DB_PASSWORD,
+    }
+
   end
 
   # ---------------------------------------------------------------- proxy
