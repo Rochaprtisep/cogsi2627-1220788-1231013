@@ -1,0 +1,45 @@
+# -*- mode: ruby -*-
+# CA2 - Part 1: one VM that builds and runs the Gradle demo (chat) and the Bookstore
+
+BOX_NAME    = "bento/ubuntu-24.04"
+BOX_VERSION = "202510.26.0"   # versao mostrada por `vagrant box list`
+VM_IP       = "192.168.56.10"
+
+# Host environment variables decide which provisioning steps run
+def flag(name, default = "true")
+  ENV.fetch(name, default).to_s.downcase
+end
+
+Vagrant.configure("2") do |config|
+  config.vm.box              = BOX_NAME
+  config.vm.box_version      = BOX_VERSION
+  config.vm.box_check_update = false
+  config.vm.hostname         = "cogsi-ca2"
+
+  # Private network (chat clients) + forwarded ports (browser on localhost)
+  config.vm.network "private_network", ip: VM_IP
+  config.vm.network "forwarded_port", guest: 8080,  host: 8080,  host_ip: "127.0.0.1"
+  config.vm.network "forwarded_port", guest: 59001, host: 59001, host_ip: "127.0.0.1"
+
+
+  config.vm.provider "virtualbox" do |vb|
+    vb.name   = "cogsi-ca2-part1"
+    vb.memory = 3072
+    vb.cpus   = 2
+  end
+
+  env = {
+    "CLONE_REPO"  => flag("CLONE_REPO"),
+    "BUILD_APPS"  => flag("BUILD_APPS"),
+    "START_APPS"  => flag("START_APPS"),
+    "REPO_URL"    => ENV.fetch("REPO_URL", "https://github.com/Rochaprtisep/cogsi2627-1220788-1231013.git"),
+    "REPO_BRANCH" => ENV.fetch("REPO_BRANCH", "main"),
+  }
+
+  config.vm.provision "system", type: "shell", path: "provision/system.sh"
+  config.vm.provision "apps",   type: "shell", path: "provision/apps.sh",
+    privileged: false, env: env
+  config.vm.provision "start",  type: "shell", path: "provision/start.sh",
+    run: "always", env: env
+
+end
