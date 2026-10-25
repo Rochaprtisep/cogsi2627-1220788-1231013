@@ -204,3 +204,7 @@ silences*
 .cache/
 **/*.bak
 **/*.old
+
+.vagrant/
+h2-data/
+*.log
