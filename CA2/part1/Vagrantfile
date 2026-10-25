@@ -21,7 +21,9 @@ Vagrant.configure("2") do |config|
   config.vm.network "forwarded_port", guest: 8080,  host: 8080,  host_ip: "127.0.0.1"
   config.vm.network "forwarded_port", guest: 59001, host: 59001, host_ip: "127.0.0.1"
 
-
+  # Dedicated synced folder for the H2 database files
+  config.vm.synced_folder "./h2-data", "/home/vagrant/h2-data",
+    create: true, owner: "vagrant", group: "vagrant"
   config.vm.provider "virtualbox" do |vb|
     vb.name   = "cogsi-ca2-part1"
     vb.memory = 3072
