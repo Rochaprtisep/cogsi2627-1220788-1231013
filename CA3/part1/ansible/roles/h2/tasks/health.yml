@@ -1,0 +1,35 @@
+- name: h2.service is active
+  ansible.builtin.command: systemctl is-active h2
+  changed_when: false
+
+- name: H2 is listening on TCP {{ h2_port }}
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ h2_port }}"
+    timeout: 60
+
+- name: H2 answers a SQL query over TCP with the application credentials
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/java
+      - -cp
+      - "{{ h2_home }}/h2.jar"
+      - org.h2.tools.Shell
+      - -url
+      - "jdbc:h2:tcp://localhost:{{ h2_port }}/{{ db_name }}"
+      - -user
+      - "{{ db_user }}"
+      - -password
+      - "{{ db_password }}"
+      - -sql
+      - SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+  register: h2_sql
+  retries: 10
+  delay: 3
+  until: h2_sql.rc == 0
+  changed_when: false
+  no_log: true
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "H2 {{ h2_version }} UP em {{ inventory_hostname }}:{{ h2_port }} e responde a SQL"

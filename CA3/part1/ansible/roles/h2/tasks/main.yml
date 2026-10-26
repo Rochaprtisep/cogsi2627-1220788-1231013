@@ -1,0 +1,12 @@
+- name: Java, service account, directories and H2 jar
+  ansible.builtin.import_tasks: install.yml
+
+- name: Database created once with the application credentials
+  ansible.builtin.import_tasks: database.yml
+
+- name: systemd service
+  ansible.builtin.import_tasks: service.yml
+
+- name: Health checks
+  ansible.builtin.import_tasks: health.yml
+  tags: [health]

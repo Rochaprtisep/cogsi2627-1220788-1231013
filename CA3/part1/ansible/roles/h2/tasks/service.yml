@@ -1,0 +1,17 @@
+- name: systemd unit for the H2 TCP server
+  ansible.builtin.template:
+    src: h2.service.j2
+    dest: /etc/systemd/system/h2.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart h2
+
+- name: Apply a changed unit now, before the health checks
+  ansible.builtin.meta: flush_handlers
+
+- name: H2 enabled at boot and running
+  ansible.builtin.systemd:
+    name: h2
+    enabled: true
+    state: started
