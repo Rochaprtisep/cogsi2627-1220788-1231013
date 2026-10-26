@@ -1,0 +1,7 @@
+# Temporary: only checks that ctrl reaches the three VMs. Replaced in step 2.
+- name: Connectivity check
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Ping every VM over the private network
+      ansible.builtin.ping:

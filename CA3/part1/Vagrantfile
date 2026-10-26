@@ -1,0 +1,112 @@
+# -*- mode: ruby -*-
+# CA3: the CA2 Part 2 architecture, now provisioned with Ansible
+#   db    192.168.56.11  H2 server       app   192.168.56.12  Bookstore
+#   proxy 192.168.56.13  Nginx           ctrl  192.168.56.14  Ansible control node
+require "fileutils"
+
+BOX_NAME    = "bento/ubuntu-24.04"
+BOX_VERSION = "202510.26.0"   # same pinned box as CA2
+
+# Definition order = boot order: dependencies first, the control node last
+NODES = {
+  "db"    => { ip: "192.168.56.11", cpus: 1, memory: 1024 },
+  "app"   => { ip: "192.168.56.12", cpus: 2, memory: 2048 },
+  "proxy" => { ip: "192.168.56.13", cpus: 1, memory: 512 },
+}
+CTRL_IP = "192.168.56.14"
+
+ROOT     = File.dirname(File.expand_path(__FILE__))
+KEYS_DIR = File.join(ROOT, "keys")
+
+# Host environment variables decide which provisioning steps run
+def flag(name, default = "true")
+  ENV.fetch(name, default).to_s.downcase == "true"
+end
+
+# --- Keys generated once on the host and never committed (see .gitignore) ---
+#   <vm>_ed25519     host -> VM (vagrant ssh), one per VM, as in CA2
+#   ansible_ed25519  ctrl -> db/app/proxy (used only by Ansible)
+FileUtils.mkdir_p([KEYS_DIR, File.join(ROOT, "secrets")])
+(NODES.keys + %w[ctrl ansible]).each do |name|
+  key = File.join(KEYS_DIR, "#{name}_ed25519")
+  next if File.exist?(key)
+  system("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "cogsi-ca3-#{name}", "-f", key) ||
+    abort("[Vagrantfile] ssh-keygen falhou para '#{name}'. Gera a chave a mao (guiao, passo 1.6).")
+end
+
+# authorized_keys of each managed VM = its own key + the Ansible key (binwrite: LF, not CRLF)
+ANSIBLE_PUB = File.read(File.join(KEYS_DIR, "ansible_ed25519.pub")).strip
+NODES.each_key do |name|
+  own = File.read(File.join(KEYS_DIR, "#{name}_ed25519.pub")).strip
+  File.binwrite(File.join(KEYS_DIR, "#{name}_authorized_keys"), "#{own}\n#{ANSIBLE_PUB}\n")
+end
+
+# Vagrant's public "insecure" keys: only for the very first boot of a new VM
+INSECURE_KEYS = Dir.glob(File.join(Vagrant.user_data_path.to_s, "insecure_private_key{,s/*}"))
+                   .reject { |f| f.end_with?(".pub") }
+
+def custom_ssh(node, name, authorized_keys)
+  node.ssh.insert_key       = false
+  node.ssh.private_key_path = [File.join(KEYS_DIR, "#{name}_ed25519")] + INSECURE_KEYS
+  node.vm.provision "ssh-key", type: "file",
+    source: File.join(KEYS_DIR, authorized_keys),
+    destination: "/home/vagrant/.ssh/authorized_keys"
+end
+
+Vagrant.configure("2") do |config|
+  config.vm.box              = BOX_NAME
+  config.vm.box_version      = BOX_VERSION
+  config.vm.box_check_update = false
+
+  # ------------------------------------------------ db, app, proxy (managed by Ansible)
+  NODES.each do |name, spec|
+    config.vm.define name do |node|
+      node.vm.hostname = name
+      node.vm.network "private_network", ip: spec[:ip]
+      # No project files on the managed VMs: Ansible pushes everything from ctrl
+      node.vm.synced_folder ".", "/vagrant", disabled: true
+      if name == "proxy"
+        node.vm.network "forwarded_port", guest: 80, host: 8080, host_ip: "127.0.0.1"
+      end
+      node.vm.provider "virtualbox" do |vb|
+        vb.name   = "cogsi-ca3-#{name}"
+        vb.memory = spec[:memory]
+        vb.cpus   = spec[:cpus]
+      end
+      custom_ssh(node, name, "#{name}_authorized_keys")
+    end
+  end
+
+  # ------------------------------------------------ ctrl (Ansible control node)
+  config.vm.define "ctrl" do |ctrl|
+    ctrl.vm.hostname = "ctrl"
+    ctrl.vm.network "private_network", ip: CTRL_IP
+    # Not world-writable: otherwise Ansible ignores ansible.cfg in this folder
+    ctrl.vm.synced_folder ".", "/vagrant", mount_options: ["dmode=755", "fmode=644"]
+    ctrl.vm.provider "virtualbox" do |vb|
+      vb.name   = "cogsi-ca3-ctrl"
+      vb.memory = 1024
+      vb.cpus   = 1
+    end
+    custom_ssh(ctrl, "ctrl", "ctrl_ed25519.pub")
+
+    ctrl.vm.provision "bootstrap", type: "shell", path: "provision/ctrl.sh"
+    ctrl.vm.provision "ansible", type: "ansible_local" do |ansible|
+      ansible.install            = false            # installed by provision/ctrl.sh
+      ansible.compatibility_mode = "2.0"
+      ansible.provisioning_path  = "/vagrant/ansible"
+      ansible.config_file        = "/vagrant/ansible/ansible.cfg"
+      ansible.inventory_path     = "/vagrant/ansible/hosts.ini"
+      ansible.playbook           = "site.yml"
+      ansible.limit              = "all"            # ctrl manages the other VMs, not itself
+      ansible.extra_vars = {
+        clone_repo:  flag("CLONE_REPO"),
+        build_apps:  flag("BUILD_APPS"),
+        force_build: flag("FORCE_BUILD", "false"),
+        start_apps:  flag("START_APPS"),
+        repo_url:    ENV.fetch("REPO_URL", "https://github.com/Rochaprtisep/cogsi2627-1220788-1231013.git"),
+        repo_branch: ENV.fetch("REPO_BRANCH", "main"),
+      }
+    end
+  end
+end
