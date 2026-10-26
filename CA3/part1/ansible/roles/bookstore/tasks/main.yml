@@ -1,0 +1,13 @@
+- name: JDK and Git
+  ansible.builtin.import_tasks: install.yml
+
+- name: Clone and build
+  ansible.builtin.import_tasks: build.yml
+
+- name: Install as a systemd service
+  ansible.builtin.import_tasks: deploy.yml
+
+- name: Health checks
+  ansible.builtin.import_tasks: health.yml
+  when: start_apps | bool
+  tags: [health]

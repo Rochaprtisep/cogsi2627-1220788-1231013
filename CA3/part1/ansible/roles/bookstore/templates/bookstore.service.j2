@@ -1,0 +1,23 @@
+# Managed by Ansible (CA3)
+[Unit]
+Description=Bookstore Spring Boot application
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User={{ bookstore_user }}
+Group={{ bookstore_user }}
+WorkingDirectory={{ bookstore_home }}
+EnvironmentFile={{ bookstore_conf_dir }}/bookstore.env
+# Do not start the application until the H2 TCP port on the db VM answers
+ExecStartPre=/usr/local/bin/wait-for-h2.sh {{ db_ip }} {{ h2_port }} 60
+ExecStart=/usr/bin/java -Xmx{{ bookstore_xmx }} -jar {{ bookstore_home }}/bookstore.jar
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

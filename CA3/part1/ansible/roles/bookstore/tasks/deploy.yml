@@ -1,0 +1,115 @@
+- name: Service account bookstore (no shell, no login)
+  ansible.builtin.user:
+    name: "{{ bookstore_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ bookstore_home }}"
+    create_home: false
+
+- name: Application directory - group developers only (setgid keeps the group on new files)
+  ansible.builtin.file:
+    path: "{{ bookstore_home }}"
+    state: directory
+    owner: root
+    group: "{{ developers_group }}"
+    mode: "2750"
+
+- name: ACL - the service account may read the application (now and for new files)
+  ansible.posix.acl:
+    path: "{{ bookstore_home }}"
+    etype: user
+    entity: "{{ bookstore_user }}"
+    permissions: rx
+    default: "{{ item }}"
+    state: present
+  loop: [false, true]
+  loop_control:
+    label: "{{ 'default ACL' if item else 'access ACL' }}"
+
+- name: Locate the built jar
+  ansible.builtin.find:
+    paths: "{{ bookstore_libs }}"
+    patterns: "bookstore-*.jar"
+    excludes: "*-plain.jar"
+  register: bookstore_built
+
+- name: A built jar must exist
+  ansible.builtin.assert:
+    that: bookstore_built.matched > 0
+    fail_msg: "Nao ha jar em {{ bookstore_libs }}. Corre com build_apps=true."
+    quiet: true
+
+- name: Install the jar
+  ansible.builtin.copy:
+    src: "{{ (bookstore_built.files | sort(attribute='mtime') | last).path }}"
+    dest: "{{ bookstore_home }}/bookstore.jar"
+    remote_src: true
+    owner: root
+    group: "{{ developers_group }}"
+    mode: "0640"
+  notify: Restart bookstore
+
+- name: External application.properties (no secrets inside)
+  ansible.builtin.template:
+    src: application.properties.j2
+    dest: "{{ bookstore_home }}/application.properties"
+    owner: root
+    group: "{{ developers_group }}"
+    mode: "0640"
+  notify: Restart bookstore
+
+- name: ACL - the service account may read the installed files (moved files do not inherit the default ACL)
+  ansible.posix.acl:
+    path: "{{ bookstore_home }}/{{ item }}"
+    etype: user
+    entity: "{{ bookstore_user }}"
+    permissions: r
+    recalculate_mask: no_mask
+    state: present
+  loop: [bookstore.jar, application.properties]
+  notify: Restart bookstore
+
+- name: Credentials directory (root and the service account only)
+  ansible.builtin.file:
+    path: "{{ bookstore_conf_dir }}"
+    state: directory
+    owner: root
+    group: "{{ bookstore_user }}"
+    mode: "0750"
+
+- name: Database credentials for the service (systemd EnvironmentFile)
+  ansible.builtin.template:
+    src: bookstore.env.j2
+    dest: "{{ bookstore_conf_dir }}/bookstore.env"
+    owner: root
+    group: "{{ bookstore_user }}"
+    mode: "0640"
+  no_log: true
+  notify: Restart bookstore
+
+- name: Script that waits for the H2 port (ExecStartPre)
+  ansible.builtin.template:
+    src: wait-for-h2.sh.j2
+    dest: /usr/local/bin/wait-for-h2.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: systemd unit
+  ansible.builtin.template:
+    src: bookstore.service.j2
+    dest: /etc/systemd/system/bookstore.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart bookstore
+
+- name: Apply changed files now (restart only if something changed)
+  ansible.builtin.meta: flush_handlers
+
+- name: Bookstore enabled at boot and running
+  ansible.builtin.systemd:
+    name: bookstore
+    enabled: true
+    state: started
+  when: start_apps | bool
