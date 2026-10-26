@@ -1,0 +1,39 @@
+- name: Does the database already exist?
+  ansible.builtin.stat:
+    path: "{{ h2_data_dir }}/{{ db_name }}.mv.db"
+  register: h2_db_file
+
+- name: Create the database locally (the server runs without -ifNotExists)
+  when: not h2_db_file.stat.exists
+  block:
+    - name: Stop H2 if it is already running
+      ansible.builtin.systemd:
+        name: h2
+        state: stopped
+      failed_when: false
+
+    - name: Create {{ db_name }} with user {{ db_user }} (the first user becomes admin)
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/java
+          - -cp
+          - "{{ h2_home }}/h2.jar"
+          - org.h2.tools.Shell
+          - -url
+          - "jdbc:h2:{{ h2_data_dir }}/{{ db_name }}"
+          - -user
+          - "{{ db_user }}"
+          - -password
+          - "{{ db_password }}"
+          - -sql
+          - SELECT 1
+      become_user: "{{ h2_user }}"
+      changed_when: true
+      no_log: true
+
+- name: Database file - readable by developers, writable only by h2
+  ansible.builtin.file:
+    path: "{{ h2_data_dir }}/{{ db_name }}.mv.db"
+    owner: "{{ h2_user }}"
+    group: "{{ developers_group }}"
+    mode: "0640"

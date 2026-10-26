@@ -1,0 +1,6 @@
+h2_home: /opt/h2
+h2_data_dir: /srv/h2
+h2_user: h2
+h2_xmx: 512m
+h2_jar: "{{ h2_home }}/h2-{{ h2_version }}.jar"
+h2_url: "https://repo1.maven.org/maven2/com/h2database/h2/{{ h2_version }}/h2-{{ h2_version }}.jar"

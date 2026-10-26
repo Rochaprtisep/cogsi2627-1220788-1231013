@@ -1,0 +1,21 @@
+# Managed by Ansible (CA3)
+[Unit]
+Description=H2 Database (TCP server mode)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ h2_user }}
+Group={{ h2_user }}
+# New files: 0640, and the setgid on {{ h2_data_dir }} gives them the group {{ developers_group }}
+UMask=0027
+WorkingDirectory={{ h2_data_dir }}
+ExecStart=/usr/bin/java -Xmx{{ h2_xmx }} -cp {{ h2_home }}/h2.jar org.h2.tools.Server -tcp -tcpAllowOthers -tcpPort {{ h2_port }} -baseDir {{ h2_data_dir }}
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

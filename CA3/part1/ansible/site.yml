@@ -11,7 +11,11 @@
   roles:
     - hardening
 
-# (passo 4) H2
+- name: H2 database server
+  hosts: db_servers
+  become: true
+  roles:
+    - h2
 
 # (passo 5) Bookstore
 
