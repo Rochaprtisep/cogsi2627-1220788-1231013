@@ -1,0 +1,9 @@
+# Handlers run in the order they are defined here: validate first, then reload
+- name: Check nginx configuration
+  ansible.builtin.command: nginx -t
+  changed_when: false
+
+- name: Reload nginx
+  ansible.builtin.systemd:
+    name: nginx
+    state: reloaded

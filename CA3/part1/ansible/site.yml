@@ -23,4 +23,8 @@
   roles:
     - bookstore
 
-# (passo 6) Nginx
+- name: Nginx reverse proxy
+  hosts: proxy_servers
+  become: true
+  roles:
+    - nginx

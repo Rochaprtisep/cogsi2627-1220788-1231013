@@ -1,0 +1,30 @@
+- name: Reverse-proxy site for the Bookstore
+  ansible.builtin.template:
+    src: bookstore.conf.j2
+    dest: /etc/nginx/sites-available/bookstore
+    owner: root
+    group: root
+    mode: "0644"
+  notify: [Check nginx configuration, Reload nginx]
+
+- name: Enable the Bookstore site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/bookstore
+    dest: /etc/nginx/sites-enabled/bookstore
+    state: link
+  notify: [Check nginx configuration, Reload nginx]
+
+- name: Disable the default site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: [Check nginx configuration, Reload nginx]
+
+- name: Nginx enabled at boot and running
+  ansible.builtin.systemd:
+    name: nginx
+    enabled: true
+    state: started
+
+- name: Apply configuration changes before the health checks
+  ansible.builtin.meta: flush_handlers
