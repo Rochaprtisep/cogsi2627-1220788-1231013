@@ -1,0 +1,9 @@
+- name: Nginx package
+  ansible.builtin.import_tasks: install.yml
+
+- name: Reverse-proxy site
+  ansible.builtin.import_tasks: config.yml
+
+- name: Health checks
+  ansible.builtin.import_tasks: health.yml
+  tags: [health]

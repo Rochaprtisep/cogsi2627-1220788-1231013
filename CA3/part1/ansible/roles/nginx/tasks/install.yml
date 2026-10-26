@@ -1,0 +1,9 @@
+- name: Install Nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    lock_timeout: 300
+  register: nginx_apt
+  retries: 3
+  delay: 10
+  until: nginx_apt is succeeded
