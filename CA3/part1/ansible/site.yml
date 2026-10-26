@@ -5,7 +5,11 @@
   roles:
     - common
 
-# (passo 3) developers, devuser e PAM
+- name: Developers group, devuser and PAM password policy (app and db)
+  hosts: hardened
+  become: true
+  roles:
+    - hardening
 
 # (passo 4) H2
 

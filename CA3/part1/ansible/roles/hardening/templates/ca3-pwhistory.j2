@@ -1,0 +1,8 @@
+Name: CA3 - password history with pam_pwhistory (last {{ pam_remember }})
+Default: yes
+Priority: 512
+Password-Type: Primary
+Password:
+	requisite	pam_pwhistory.so remember={{ pam_remember }} use_authtok
+Password-Initial:
+	requisite	pam_pwhistory.so remember={{ pam_remember }}

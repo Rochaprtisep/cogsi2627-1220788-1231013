@@ -1,0 +1,15 @@
+- name: Group developers
+  ansible.builtin.group:
+    name: "{{ developers_group }}"
+    state: present
+
+- name: User devuser, member of developers
+  ansible.builtin.user:
+    name: "{{ dev_user }}"
+    groups: "{{ developers_group }}"
+    append: true
+    shell: /bin/bash
+    create_home: true
+    password: "{{ dev_user_password | password_hash('sha512') }}"
+    update_password: on_create
+  no_log: true

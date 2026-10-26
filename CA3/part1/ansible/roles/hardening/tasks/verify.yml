@@ -1,0 +1,29 @@
+- name: Apply pending PAM changes before checking them
+  ansible.builtin.meta: flush_handlers
+
+- name: The PAM stacks contain pwquality, pwhistory and faillock
+  ansible.builtin.command:
+    cmd: grep -h -E 'pam_(pwquality|pwhistory|faillock)' /etc/pam.d/common-auth /etc/pam.d/common-account /etc/pam.d/common-password
+  register: pam_stack
+  changed_when: false
+  failed_when: >-
+    pam_stack.rc != 0
+    or 'pam_faillock.so preauth' not in pam_stack.stdout
+    or 'pam_faillock.so authfail' not in pam_stack.stdout
+    or ('pam_pwhistory.so remember=' ~ pam_remember) not in pam_stack.stdout
+    or 'pam_pwquality.so' not in pam_stack.stdout
+
+- name: Weak passwords are rejected (too short / fewer than 3 classes)
+  ansible.builtin.command:
+    cmd: pwscore
+    stdin: "{{ item }}"
+  loop: ["Rb4!x9", "ribeiradouro42", "RIBEIRADOURO"]
+  register: weak_pw
+  changed_when: false
+  failed_when: weak_pw.rc == 0
+
+- name: A 12+ character password with only 3 of the 4 classes is accepted
+  ansible.builtin.command:
+    cmd: pwscore
+    stdin: "Ribeira42Douro"
+  changed_when: false

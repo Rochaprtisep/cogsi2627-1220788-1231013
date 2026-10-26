@@ -1,0 +1,5 @@
+# Managed by Ansible (CA3): account lockout for pam_faillock
+deny = {{ pam_deny }}
+unlock_time = {{ pam_unlock_time }}
+fail_interval = {{ pam_fail_interval }}
+audit

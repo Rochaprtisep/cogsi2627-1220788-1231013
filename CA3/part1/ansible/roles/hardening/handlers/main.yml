@@ -1,0 +1,6 @@
+- name: Apply PAM profiles
+  ansible.builtin.command:
+    cmd: pam-auth-update --package --enable pwquality ca3-pwhistory ca3-faillock ca3-faillock-notify
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  changed_when: true

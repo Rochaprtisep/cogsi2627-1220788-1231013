@@ -1,0 +1,9 @@
+# Managed by Ansible (CA3): password complexity for pam_pwquality
+# All credits are 0, so minlen counts real characters only
+minlen = {{ pam_minlen }}
+dcredit = 0
+ucredit = 0
+lcredit = 0
+ocredit = 0
+# At least {{ pam_minclass }} of the 4 classes (upper, lower, digit, other), not all four
+minclass = {{ pam_minclass }}
