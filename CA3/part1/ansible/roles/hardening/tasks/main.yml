@@ -1,0 +1,12 @@
+- name: developers group and devuser
+  ansible.builtin.import_tasks: users.yml
+
+- name: Password complexity and history
+  ansible.builtin.import_tasks: pam_password.yml
+
+- name: Account lockout
+  ansible.builtin.import_tasks: pam_lockout.yml
+
+- name: Check that the policy is active
+  ansible.builtin.import_tasks: verify.yml
+  tags: [health]

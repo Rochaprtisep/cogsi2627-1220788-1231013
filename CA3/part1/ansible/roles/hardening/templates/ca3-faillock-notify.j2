@@ -1,0 +1,13 @@
+Name: CA3 - refuse locked accounts and reset the counter (pam_faillock preauth/account)
+Default: yes
+Priority: 1024
+Auth-Type: Primary
+Auth:
+	requisite	pam_faillock.so preauth
+Auth-Initial:
+	requisite	pam_faillock.so preauth
+Account-Type: Primary
+Account:
+	required	pam_faillock.so
+Account-Initial:
+	required	pam_faillock.so

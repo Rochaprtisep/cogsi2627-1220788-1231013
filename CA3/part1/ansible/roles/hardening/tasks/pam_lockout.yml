@@ -1,0 +1,17 @@
+- name: Lockout rules for pam_faillock
+  ansible.builtin.template:
+    src: faillock.conf.j2
+    dest: /etc/security/faillock.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: pam-auth-update profiles for pam_faillock
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/usr/share/pam-configs/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [ca3-faillock, ca3-faillock-notify]
+  notify: Apply PAM profiles

@@ -1,0 +1,11 @@
+dev_user: devuser
+# Initial password, generated once in CA3/part1/secrets/ (git-ignored)
+dev_user_password: "{{ lookup('ansible.builtin.password', playbook_dir + '/../secrets/devuser_password length=16 chars=ascii_letters,digits') }}"
+
+# Password policy (slides 9 and 10)
+pam_minlen: 12          # minimum length
+pam_minclass: 3         # at least 3 of the 4 classes (upper, lower, digit, symbol)
+pam_remember: 5         # the last 5 passwords cannot be reused
+pam_deny: 5             # failed attempts before locking
+pam_unlock_time: 600    # locked for 10 minutes
+pam_fail_interval: 900  # failures counted within 15 minutes
