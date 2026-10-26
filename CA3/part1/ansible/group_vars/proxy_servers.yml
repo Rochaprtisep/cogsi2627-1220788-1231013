@@ -1,0 +1,2 @@
+firewall_rules:
+  - { port: "80", from: "any", comment: "HTTP (host via port forwarding)" }

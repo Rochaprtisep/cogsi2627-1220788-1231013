@@ -1,0 +1,30 @@
+- name: Allow SSH (Vagrant and the ctrl VM) before enabling the firewall
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+
+- name: Allow each service port only from the expected peer
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ item.from }}"
+    port: "{{ item.port | string }}"
+    proto: tcp
+    comment: "{{ item.comment }}"
+  loop: "{{ firewall_rules }}"
+  loop_control:
+    label: "{{ item.port }} from {{ item.from }}"
+
+- name: Deny every other incoming connection
+  community.general.ufw:
+    direction: incoming
+    default: deny
+
+- name: Allow outgoing connections (apt, Maven Central, GitHub)
+  community.general.ufw:
+    direction: outgoing
+    default: allow
+
+- name: Enable ufw
+  community.general.ufw:
+    state: enabled

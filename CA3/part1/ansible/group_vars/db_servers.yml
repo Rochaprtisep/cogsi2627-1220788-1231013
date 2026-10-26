@@ -1,0 +1,2 @@
+firewall_rules:
+  - { port: "{{ h2_port }}", from: "{{ app_ip }}", comment: "H2 from app VM" }

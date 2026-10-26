@@ -1,0 +1,2 @@
+firewall_rules:
+  - { port: "{{ app_port }}", from: "{{ proxy_ip }}", comment: "Bookstore from proxy VM" }
