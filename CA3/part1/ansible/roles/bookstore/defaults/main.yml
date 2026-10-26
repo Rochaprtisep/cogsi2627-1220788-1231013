@@ -1,0 +1,7 @@
+bookstore_user: bookstore
+bookstore_home: /opt/bookstore
+bookstore_conf_dir: /etc/bookstore
+bookstore_xmx: 768m
+bookstore_repo_dir: /home/vagrant/cogsi
+bookstore_project_dir: "{{ bookstore_repo_dir }}/CA1/part2"
+bookstore_libs: "{{ bookstore_project_dir }}/app/build/libs"

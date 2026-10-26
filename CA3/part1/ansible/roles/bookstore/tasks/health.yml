@@ -1,0 +1,30 @@
+- name: The app VM reaches the H2 port on the db VM (firewall and network)
+  ansible.builtin.wait_for:
+    host: "{{ db_ip }}"
+    port: "{{ h2_port }}"
+    timeout: 30
+
+- name: Bookstore is UP and its database connection is UP (/actuator/health)
+  ansible.builtin.uri:
+    url: "http://localhost:{{ app_port }}/actuator/health"
+    return_content: true
+  register: app_health
+  retries: 30
+  delay: 3
+  until: >-
+    app_health.status | default(0) == 200 and
+    app_health.json.components.db.status | default('DOWN') == 'UP'
+
+- name: The REST API returns the books (application-level check)
+  ansible.builtin.uri:
+    url: "http://localhost:{{ app_port }}/books"
+    return_content: true
+  register: app_books
+  failed_when: >-
+    app_books.status != 200 or
+    app_books.json is not sequence or
+    (app_books.json | length) == 0
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "Bookstore UP, db UP, {{ app_books.json | length }} livros em /books"

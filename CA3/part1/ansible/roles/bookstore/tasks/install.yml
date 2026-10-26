@@ -1,0 +1,9 @@
+- name: Install JDK 17 and Git (the app VM builds the code, as in CA2)
+  ansible.builtin.apt:
+    name: [openjdk-17-jdk-headless, git]
+    state: present
+    lock_timeout: 300
+  register: bookstore_apt
+  retries: 3
+  delay: 10
+  until: bookstore_apt is succeeded

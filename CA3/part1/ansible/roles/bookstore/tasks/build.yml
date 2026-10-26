@@ -1,0 +1,32 @@
+- name: Clone or update the group repository (as vagrant)
+  ansible.builtin.git:
+    repo: "{{ repo_url }}"
+    dest: "{{ bookstore_repo_dir }}"
+    version: "{{ repo_branch }}"
+  become_user: vagrant
+  when: clone_repo | bool
+  register: bookstore_repo
+  retries: 3
+  delay: 5
+  until: bookstore_repo is succeeded
+  no_log: "{{ '@' in repo_url }}"   # a token inside the URL must never reach the output
+
+- name: Is there a built jar already?
+  ansible.builtin.find:
+    paths: "{{ bookstore_libs }}"
+    patterns: "bookstore-*.jar"
+    excludes: "*-plain.jar"
+  register: bookstore_jars
+
+- name: Build with the Gradle Wrapper (only when the code changed, the jar is missing or forced)
+  ansible.builtin.command:
+    cmd: ./gradlew clean build --no-daemon --console=plain
+    chdir: "{{ bookstore_project_dir }}"
+  become_user: vagrant
+  when: >-
+    build_apps | bool and
+    (force_build | bool or bookstore_repo is changed or bookstore_jars.matched == 0)
+  register: bookstore_gradle
+  retries: 2
+  delay: 10
+  until: bookstore_gradle is succeeded

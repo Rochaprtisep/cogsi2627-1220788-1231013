@@ -1,0 +1,6 @@
+- name: Restart bookstore
+  ansible.builtin.systemd:
+    name: bookstore
+    state: restarted
+    daemon_reload: true
+  when: start_apps | bool

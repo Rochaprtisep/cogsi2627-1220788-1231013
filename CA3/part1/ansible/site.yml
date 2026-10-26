@@ -17,6 +17,10 @@
   roles:
     - h2
 
-# (passo 5) Bookstore
+- name: Bookstore application
+  hosts: app_servers
+  become: true
+  roles:
+    - bookstore
 
 # (passo 6) Nginx
