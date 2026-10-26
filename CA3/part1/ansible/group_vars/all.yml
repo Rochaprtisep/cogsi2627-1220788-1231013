@@ -1,0 +1,23 @@
+# Shared by every play. The IPs come from hosts.ini (single source of truth).
+db_ip:    "{{ hostvars['db'].ansible_host }}"
+app_ip:   "{{ hostvars['app'].ansible_host }}"
+proxy_ip: "{{ hostvars['proxy'].ansible_host }}"
+
+# H2 server: same version as the driver inside the Bookstore jar (CA2, step 0.4)
+h2_version: "2.3.232"
+h2_port: 9092
+db_name: bookstore
+db_user: bookstore
+# Generated on the first run in CA3/part1/secrets/ (git-ignored) and reused afterwards
+db_password: "{{ lookup('ansible.builtin.password', playbook_dir + '/../secrets/db_password length=24 chars=ascii_letters,digits') }}"
+
+app_port: 8080
+developers_group: developers
+
+# Provisioning switches (the Vagrantfile overrides them from host environment variables)
+clone_repo: true
+build_apps: true
+force_build: false
+start_apps: true
+repo_url: "https://github.com/Rochaprtisep/cogsi2627-1220788-1231013.git"
+repo_branch: main

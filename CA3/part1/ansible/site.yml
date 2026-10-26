@@ -1,7 +1,14 @@
-# Temporary: only checks that ctrl reaches the three VMs. Replaced in step 2.
-- name: Connectivity check
+# CA3: provisions the CA2 Part 2 VMs. Play order = dependency order (db -> app -> proxy).
+- name: Baseline for every VM (packages and firewall)
   hosts: all
-  gather_facts: false
-  tasks:
-    - name: Ping every VM over the private network
-      ansible.builtin.ping:
+  become: true
+  roles:
+    - common
+
+# (passo 3) developers, devuser e PAM
+
+# (passo 4) H2
+
+# (passo 5) Bookstore
+
+# (passo 6) Nginx
