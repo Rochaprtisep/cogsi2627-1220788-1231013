@@ -6,13 +6,18 @@ RUN apk add --no-cache git bash
 
 WORKDIR /workspace
 
-# Build arguments for repository location and branchso qu
+# Build arguments for repository location and branch
 ARG REPO_URL=https://github.com/Rochaprtisep/cogsi2627-1220788-1231013.git
 ARG REPO_BRANCH=main
 
-# Clone repository during image creation and build application
+# Clone repository during image creation and build application from repo
 RUN git clone --depth 1 --branch ${REPO_BRANCH} ${REPO_URL} repo && \
-    cd repo/CA4/part1/chat-server && \
+    if [ -d "repo/CA4/part1/chat-server" ]; then \
+        cd repo/CA4/part1/chat-server; \
+    else \
+        cd repo/CA1/part1; \
+    fi && \
+    sed -i 's/\r$//' gradlew && \
     chmod +x gradlew && \
     ./gradlew clean build packageApp --no-daemon && \
     mkdir -p /app/lib && \
@@ -27,4 +32,3 @@ EXPOSE 59001
 
 # Run the chat server
 ENTRYPOINT ["java", "-cp", "chat-server.jar:lib/*", "org.example.ChatServerApp", "59001"]
-

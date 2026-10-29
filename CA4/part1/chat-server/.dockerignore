@@ -1,11 +1,14 @@
 .git
 .gradle
-build/
-app/build/
-app/backup/
-.idea/
-.vscode/
+.idea
+.vscode
 *.log
 *.tmp
 .DS_Store
 
+# Ignore build artifacts EXCEPT the pre-compiled JARs and libs needed for Dockerfile.v2
+app/build/*
+!app/build/libs
+app/build/libs/*
+!app/build/libs/*.jar
+!app/build/libs/lib

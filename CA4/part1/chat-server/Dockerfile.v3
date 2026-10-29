@@ -7,8 +7,10 @@ WORKDIR /src
 # Copy all source files and Gradle configuration
 COPY . .
 
-# Build application and copy dependencies
-RUN chmod +x gradlew && \
+# Ensure gradlew has unix line endings and run build
+RUN apk add --no-cache bash && \
+    sed -i 's/\r$//' gradlew && \
+    chmod +x gradlew && \
     ./gradlew clean build packageApp --no-daemon
 
 # Stage 2: Runtime stage with lightweight JRE and non-root user
@@ -31,4 +33,3 @@ EXPOSE 59001
 
 # Run the chat server
 ENTRYPOINT ["java", "-cp", "chat-server.jar:lib/*", "org.example.ChatServerApp", "59001"]
-
