@@ -1,0 +1,30 @@
+# Version 1: Build the application entirely inside the Docker image using source code cloned during image creation
+FROM eclipse-temurin:21-jdk-alpine
+
+# Install git and bash
+RUN apk add --no-cache git bash
+
+WORKDIR /workspace
+
+# Build arguments for repository location and branchso qu
+ARG REPO_URL=https://github.com/Rochaprtisep/cogsi2627-1220788-1231013.git
+ARG REPO_BRANCH=main
+
+# Clone repository during image creation and build application
+RUN git clone --depth 1 --branch ${REPO_BRANCH} ${REPO_URL} repo && \
+    cd repo/CA4/part1/chat-server && \
+    chmod +x gradlew && \
+    ./gradlew clean build packageApp --no-daemon && \
+    mkdir -p /app/lib && \
+    cp app/build/libs/chat-server-*.jar /app/chat-server.jar && \
+    cp -r app/build/libs/lib/* /app/lib/ && \
+    rm -rf /workspace/repo
+
+WORKDIR /app
+
+# Expose chat server port
+EXPOSE 59001
+
+# Run the chat server
+ENTRYPOINT ["java", "-cp", "chat-server.jar:lib/*", "org.example.ChatServerApp", "59001"]
+
