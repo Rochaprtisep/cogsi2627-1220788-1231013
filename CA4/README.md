@@ -16,7 +16,7 @@
 
 Este relatório documenta a realização da **Parte 1** do CA4, focada na contentorização da aplicação de Chat desenvolvida no CA1 utilizando **Docker**.
 
-O objetivo principal desta fase foi empacotar e executar o servidor de chat em contentores Docker através de três abordagens distintas de construção (`Dockerfile`), aplicar boas práticas de segurança através da execução sob um utilizador *non-root*, recolher métricas comparativas (tempo de build, tamanho e camadas) e preparar as imagens para publicação.
+O objetivo principal desta fase foi empacotar e executar o servidor de chat em contentores Docker através de três abordagens distintas de construção (`Dockerfile`), aplicar boas práticas de segurança através da execução sob um utilizador *non-root*, recolher métricas comparativas (tempo de build, tamanho e camadas) e publicar as imagens resultantes no Docker Hub.
 
 ---
 
@@ -242,7 +242,28 @@ TcpTestSucceeded : True
 
 ---
 
-## 9. Autoavaliação
+## 9. Publicação no Docker Hub
+
+As imagens foram tagueadas e publicadas no Docker Hub sob a conta `fontezz`:
+
+- `fontezz/chat-server:v1`
+- `fontezz/chat-server:v2`
+- `fontezz/chat-server:v3`
+
+Comandos utilizados:
+```bash
+docker tag chat-server:v1 fontezz/chat-server:v1
+docker tag chat-server:v2 fontezz/chat-server:v2
+docker tag chat-server:v3 fontezz/chat-server:v3
+
+docker push fontezz/chat-server:v1
+docker push fontezz/chat-server:v2
+docker push fontezz/chat-server:v3
+```
+
+---
+
+## 10. Autoavaliação
 
 | Membro da Equipa | Número de Estudante | Contribuição (%) |
 |---|---|---|
