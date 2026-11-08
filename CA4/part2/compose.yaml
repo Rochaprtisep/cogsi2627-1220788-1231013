@@ -1,0 +1,42 @@
+# CA4 - Part 2: Bookstore in three containers  (host -> proxy -> web -> db)
+# Every value comes from .env (copy .env.example; .env is never committed).
+name: cogsi-ca4
+
+services:
+
+  # --- db: H2 in server mode; data in a named volume ---
+  db:
+    build:
+      context: ./db
+      args:
+        H2_VERSION: ${H2_VERSION:-2.3.232}
+    image: ${DOCKERHUB_USER:?set DOCKERHUB_USER in .env}/cogsi-ca4-db:${IMAGE_TAG:-1.0.0}
+    environment:
+      H2_DB_NAME: ${DB_NAME:-bookstore}
+      H2_USER: ${DB_USER:?set DB_USER in .env}
+      H2_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      H2_PORT: ${DB_PORT:-9092}
+      H2_DATA_DIR: /var/lib/h2          # must match the volume target below
+    volumes:
+      - h2-data:/var/lib/h2
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "h2-healthcheck"]   # SELECT 1 over TCP with the application user
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+      start_interval: 2s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    restart: unless-stopped
+
+networks:
+  backend:
+    internal: true      # web <-> db; no route to the outside, the proxy cannot reach the db
+
+volumes:
+  h2-data: {}           # H2 files, outside the container filesystem

@@ -1,0 +1,5 @@
+# The db image only needs its Dockerfile and the two scripts
+*
+!Dockerfile
+!docker-entrypoint.sh
+!h2-healthcheck.sh
