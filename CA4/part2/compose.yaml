@@ -34,7 +34,45 @@ services:
           memory: 512m
     restart: unless-stopped
 
+  # --- web: Bookstore (built from CA1/part2) ---
+  web:
+    build:
+      context: ../../CA1/part2
+      dockerfile: ../../CA4/part2/web/Dockerfile   # relative to the build context
+    image: ${DOCKERHUB_USER:?set DOCKERHUB_USER in .env}/cogsi-ca4-web:${IMAGE_TAG:-1.0.0}
+    environment:
+      SERVER_PORT: ${WEB_PORT:-8080}
+      # "db" is the service name: Docker's DNS resolves it inside the backend network
+      SPRING_DATASOURCE_URL: jdbc:h2:tcp://db:${DB_PORT:-9092}/${DB_NAME:-bookstore}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:?set DB_USER in .env}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      SPRING_JPA_HIBERNATE_DDLAUTO: update
+      SPRING_JPA_SHOWSQL: "false"
+      SPRING_H2_CONSOLE_ENABLED: "false"
+      MANAGEMENT_ENDPOINT_HEALTH_SHOWCOMPONENTS: always
+    depends_on:
+      db:
+        condition: service_healthy      # start only after the db health check passes
+    networks:
+      - backend
+      - frontend
+    healthcheck:
+      # /actuator/health answers 503 when the database is DOWN, so wget fails
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:$${SERVER_PORT}/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+      start_interval: 3s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    restart: unless-stopped
+
+
 networks:
+  frontend: {} 
   backend:
     internal: true      # web <-> db; no route to the outside, the proxy cannot reach the db
 

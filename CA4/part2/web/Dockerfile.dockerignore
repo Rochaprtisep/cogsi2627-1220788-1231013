@@ -1,0 +1,20 @@
+# Build context = CA1/part2. Only what the Gradle build needs is sent to Docker.
+# (Dockerfile-specific ignore file: BuildKit uses it instead of CA1/part2/.dockerignore)
+
+# Build output and caches from builds on the host
+**/build/
+**/.gradle/
+**/bin/
+**/out/
+
+# IDE files and logs
+.idea/
+.vscode/
+*.iml
+**/*.log
+
+# Not needed to build the jar
+README.md
+gradlew.bat
+app/src/test/
+app/src/integrationTest/
