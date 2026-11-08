@@ -1,0 +1,4 @@
+# Real values (passwords, Docker Hub user) live only in .env
+.env
+# The root .gitignore ignores ".env.*"; the template must be committed
+!.env.example
