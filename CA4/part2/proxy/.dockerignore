@@ -1,0 +1,4 @@
+# The proxy image only needs its Dockerfile and the Nginx template
+*
+!Dockerfile
+!templates/
