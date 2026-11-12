@@ -1,0 +1,4 @@
+app_port: 8080
+container_name: bookstore
+data_volume: bookstore-data
+# image and image_tag are always passed by the pipeline (-e image=... -e image_tag=...)
