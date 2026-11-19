@@ -1,0 +1,36 @@
+// CA5 Part 1: restore an archived stable version on the green VM
+pipeline {
+  agent { label 'ca5-p1' }
+  parameters {
+    string(name: 'STABLE_VERSION', defaultValue: '',
+           description: 'Archived version to restore on green, e.g. stable-v1.0.3')
+  }
+  options { disableConcurrentBuilds() }
+  stages {
+    stage('Validate') {
+      steps {
+        script {
+          if (!(params.STABLE_VERSION ==~ /stable-v\d+\.\d+\.\d+/)) {
+            error "STABLE_VERSION must look like stable-v1.0.3 (got '${params.STABLE_VERSION}')"
+          }
+          currentBuild.displayName = "rollback -> ${params.STABLE_VERSION}"
+        }
+      }
+    }
+    stage('Rollback green') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'jenkins-artifacts',
+                                          usernameVariable: 'JENKINS_USER',
+                                          passwordVariable: 'JENKINS_TOKEN')]) {
+          dir('CA5/part1/ansible') {
+            sh 'ansible-playbook rollback.yml -e stable_version=$STABLE_VERSION'
+          }
+        }
+      }
+    }
+  }
+  post {
+    success { echo "[CA5] green restored to ${params.STABLE_VERSION}" }
+    failure { echo "[CA5] Rollback to ${params.STABLE_VERSION} failed - check the Ansible output" }
+  }
+}
