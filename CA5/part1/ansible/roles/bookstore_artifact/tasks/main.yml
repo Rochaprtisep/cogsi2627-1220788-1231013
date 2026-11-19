@@ -1,0 +1,54 @@
+- name: Jenkins credentials must come from the environment (never from the repository)
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'JENKINS_USER') | length > 0
+      - lookup('env', 'JENKINS_TOKEN') | length > 0
+    fail_msg: "Define JENKINS_USER and JENKINS_TOKEN (the pipeline does it with withCredentials)."
+    quiet: true
+
+- name: Download the archived artifact from Jenkins
+  ansible.builtin.get_url:
+    url: "{{ jenkins_url }}/job/{{ jenkins_job }}/{{ build_number }}/artifact/dist/bookstore-{{ stable_version }}.jar"
+    dest: "{{ app_dir }}/releases/bookstore-{{ stable_version }}.jar"
+    url_username: "{{ lookup('env', 'JENKINS_USER') }}"
+    url_password: "{{ lookup('env', 'JENKINS_TOKEN') }}"
+    force_basic_auth: true
+    owner: root
+    group: "{{ app_user }}"
+    mode: "0644"
+
+- name: Stop the application currently running
+  ansible.builtin.systemd: { name: bookstore, state: stopped }
+
+- name: Wait until port {{ app_port }} is released
+  ansible.builtin.wait_for: { port: "{{ app_port }}", state: stopped, timeout: 60 }
+
+- name: Point current.jar to the selected release
+  ansible.builtin.file:
+    src: "{{ app_dir }}/releases/bookstore-{{ stable_version }}.jar"
+    dest: "{{ app_dir }}/current.jar"
+    state: link
+    force: true
+
+- name: Start the application
+  ansible.builtin.systemd: { name: bookstore, state: started, daemon_reload: true }
+
+- name: Health check - /actuator/health must report UP
+  ansible.builtin.uri:
+    url: "http://localhost:{{ app_port }}/actuator/health"
+    return_content: true
+  register: health
+  until: health.status == 200 and health.json.status == 'UP'
+  retries: 30
+  delay: 3
+
+- name: Health check - the running version is the requested one
+  ansible.builtin.uri:
+    url: "http://localhost:{{ app_port }}/info/details"
+    return_content: true
+  register: info
+  failed_when: (stable_version | regex_replace('^stable-v', '')) not in info.content
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} is running {{ stable_version }} (Jenkins build {{ build_number }})"

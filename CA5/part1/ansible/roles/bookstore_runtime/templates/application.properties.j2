@@ -1,0 +1,9 @@
+# Managed by Ansible (CA5 Part 1). Overrides the properties packaged in the jar.
+server.port={{ app_port }}
+spring.datasource.url=jdbc:h2:file:{{ app_dir }}/data/bookstore
+spring.datasource.username=sa
+spring.datasource.password=
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=false
+spring.h2.console.enabled=false
+service.environment={{ inventory_hostname }}

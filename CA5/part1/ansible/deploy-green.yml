@@ -1,0 +1,9 @@
+- name: Deploy an archived Jenkins artifact on the green VM (candidate environment)
+  hosts: green
+  become: true
+  pre_tasks:
+    - name: The pipeline must pass the version and the build number
+      ansible.builtin.assert:
+        that: [stable_version is defined, build_number is defined]
+  roles:
+    - bookstore_artifact

@@ -1,0 +1,13 @@
+# Shared by every playbook of CA5 Part 1
+app_user: bookstore
+app_dir: /opt/bookstore
+app_port: 8080
+
+# Jenkins as seen from the VMs (host-only network). Credentials come from env vars, never from here.
+jenkins_url: http://192.168.56.1:9090
+jenkins_job: ca5-part1
+
+# Version installed on blue by `vagrant up` (built on ctrl from the synced repository)
+src_repo_dir: /repo/CA1/part2
+build_dir: /home/vagrant/bookstore-src
+blue_version: "1.0.0"
