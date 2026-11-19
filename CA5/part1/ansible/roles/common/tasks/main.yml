@@ -2,8 +2,6 @@
   ansible.builtin.apt:
     name: [openjdk-17-jre-headless, curl, ufw]
     state: present
-    update_cache: true
-    cache_valid_time: 86400
     lock_timeout: 300
 
 - name: Allow SSH before enabling the firewall
