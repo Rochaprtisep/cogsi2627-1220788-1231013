@@ -1,0 +1,30 @@
+# Restores an archived stable version on the green VM.
+#   ansible-playbook rollback.yml -e stable_version=stable-v1.0.7
+# The version identifies the Jenkins build that produced it (stable-v1.0.7 -> build 7).
+- name: Roll back the green VM to a previously archived stable version
+  hosts: green
+  become: true
+  pre_tasks:
+    - name: Validate the requested version
+      ansible.builtin.assert:
+        that:
+          - stable_version is defined
+          - stable_version is match('^stable-v\d+\.\d+\.\d+$')
+        fail_msg: "Use -e stable_version=stable-v<major>.<minor>.<build>"
+
+    - name: Derive the Jenkins build number from the version
+      ansible.builtin.set_fact:
+        build_number: "{{ stable_version.split('.') | last }}"
+
+    - name: Show what is running before the rollback
+      ansible.builtin.uri: { url: "http://localhost:{{ app_port }}/info/details", return_content: true }
+      register: before
+      failed_when: false
+
+    - name: Report the current version
+      ansible.builtin.debug:
+        msg: "{{ before.content | default('application not running') }}"
+
+  roles:
+    # Retrieve from Jenkins -> stop and release port 8080 -> replace current.jar -> start -> health checks
+    - bookstore_artifact
