@@ -203,7 +203,11 @@ Após o deployment, o ambiente de produção estável (`blue`) permaneceu com a 
 
 ### 4.3. Comprovação do Rollback para a Versão 1.0.2
 
-Foi disparado o job `ca5-part1-rollback` selecionando o parâmetro `STABLE_VERSION=stable-v1.0.2`:
+Foi disparado o job `ca5-part1-rollback` selecionando o parâmetro `STABLE_VERSION=stable-v1.0.2`. A pipeline executou todas as fases com sucesso:
+
+![Pipeline Stage View - Rollback no Green com Sucesso](images/ca5-p1-rollback-success.png)
+
+Log de execução do Ansible na pipeline de rollback:
 
 ```text
 PLAY [Rollback to an archived stable version on the green VM] ******************
