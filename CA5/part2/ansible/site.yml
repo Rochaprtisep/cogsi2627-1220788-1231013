@@ -1,0 +1,6 @@
+# CA5 Part 2 provisioning: prod only gets Docker; the container is started by the pipeline (deploy.yml)
+- name: Production VM with Docker
+  hosts: prod
+  become: true
+  roles:
+    - docker

@@ -1,0 +1,19 @@
+- name: Install Docker, the Docker SDK for Python (used by community.docker) and ufw
+  ansible.builtin.apt:
+    name: [docker.io, python3-docker, curl, ufw]
+    state: present
+    update_cache: true
+    cache_valid_time: 86400
+    lock_timeout: 300
+
+- name: Docker running and enabled at boot
+  ansible.builtin.systemd: { name: docker, state: started, enabled: true }
+
+- name: Allow SSH
+  community.general.ufw: { rule: allow, port: "22", proto: tcp }
+
+- name: Allow the Bookstore port
+  community.general.ufw: { rule: allow, port: "{{ app_port | string }}", proto: tcp }
+
+- name: Enable ufw, denying every other incoming connection
+  community.general.ufw: { state: enabled, direction: incoming, policy: deny }

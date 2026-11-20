@@ -1,0 +1,102 @@
+// CA5 Part 1: build, test, archive and (optionally) deploy the Bookstore to the green VM
+pipeline {
+  agent { label 'ca5-p1' }                    // ctrl VM: Linux, Gradle, Ansible
+
+  parameters {
+    booleanParam(name: 'DEPLOY', defaultValue: false,
+                 description: 'Deploy this build to the green VM with Ansible')
+  }
+
+  options {
+    skipDefaultCheckout()                     // the Checkout stage does it explicitly
+    disableConcurrentBuilds()                 // one deploy to green at a time
+    buildDiscarder(logRotator(numToKeepStr: '30'))
+  }
+
+  environment {
+    REPO_URL    = 'https://github.com/Rochaprtisep/cogsi2627-1220788-1231013.git'
+    APP_DIR     = 'CA1/part2'
+    APP_VERSION = "1.0.${env.BUILD_NUMBER}"
+    STABLE_TAG  = "stable-v1.0.${env.BUILD_NUMBER}"
+    GREEN_URL   = 'http://192.168.56.22:8080'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        git branch: 'development', credentialsId: 'github-pat', url: env.REPO_URL
+      }
+    }
+
+    stage('Assemble') {
+      steps {
+        dir(env.APP_DIR) {
+          sh 'chmod +x gradlew && ./gradlew clean bootJar -PappVersion=$APP_VERSION --no-daemon --console=plain'
+        }
+      }
+    }
+
+    stage('Test') {
+      steps {
+        dir(env.APP_DIR) {
+          sh './gradlew test -PappVersion=$APP_VERSION --no-daemon --console=plain'
+        }
+      }
+      post {
+        always { junit "${env.APP_DIR}/app/build/test-results/test/*.xml" }
+      }
+    }
+
+    stage('Archive') {
+      // Reached only when Test passed: only tested artifacts get a stable-* tag
+      steps {
+        sh '''
+          rm -rf dist && mkdir dist
+          cp $APP_DIR/app/build/libs/bookstore-$APP_VERSION.jar dist/bookstore-$STABLE_TAG.jar
+          (cd dist && sha256sum *.jar > SHA256SUMS)
+        '''
+        archiveArtifacts artifacts: "dist/*, ${env.APP_DIR}/app/build/reports/tests/test/**",
+                         fingerprint: true
+        script {
+          currentBuild.displayName = env.STABLE_TAG
+          currentBuild.description = "development @ ${env.GIT_COMMIT ?: sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()}"
+        }
+      }
+    }
+
+    stage('Deploy') {
+      when { expression { params.DEPLOY } }
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'jenkins-artifacts',
+                                          usernameVariable: 'JENKINS_USER',
+                                          passwordVariable: 'JENKINS_TOKEN')]) {
+          dir('CA5/part1/ansible') {
+            sh 'ansible-playbook deploy-green.yml -e stable_version=$STABLE_TAG -e build_number=$BUILD_NUMBER'
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      echo "[CA5] ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.STABLE_TAG}) finished: ${currentBuild.currentResult}"
+    }
+    success {
+      script {
+        if (params.DEPLOY) {
+          // Deployment verification against the green VM, from outside the VM
+          sh '''
+            curl -fsS --retry 20 --retry-delay 3 --retry-all-errors $GREEN_URL/actuator/health | grep -q '"status":"UP"'
+            curl -fsS $GREEN_URL/info/details | grep -q "$APP_VERSION"
+            curl -fsS $GREEN_URL/books > /dev/null
+            echo "[CA5] green is healthy and running $STABLE_TAG"
+          '''
+        }
+      }
+    }
+    failure {
+      echo '[CA5] Pipeline failed: no stable-* artifact was produced or the deploy failed.'
+    }
+  }
+}

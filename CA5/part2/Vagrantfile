@@ -1,0 +1,81 @@
+# -*- mode: ruby -*-
+# CA5 Part 2: prod (runs the Bookstore container) and ctrl2 (Ansible + Docker + Jenkins agent)
+#   ctrl2 192.168.56.30   prod 192.168.56.31
+require "fileutils"
+
+BOX_NAME    = "bento/ubuntu-24.04"
+BOX_VERSION = "202510.26.0"
+
+NODES    = { "prod" => { ip: "192.168.56.31", cpus: 1, memory: 2048 } }   # 1 vCPU: with Hyper-V active, 2 vCPUs can hang the boot
+CTRL_IP  = "192.168.56.30"
+ROOT     = File.dirname(File.expand_path(__FILE__))
+KEYS_DIR = File.join(ROOT, "keys")
+
+FileUtils.mkdir_p(KEYS_DIR)
+(NODES.keys + %w[ctrl2 ansible]).each do |name|
+  key = File.join(KEYS_DIR, "#{name}_ed25519")
+  next if File.exist?(key)
+  system("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "cogsi-ca5-#{name}", "-f", key) ||
+    abort("[Vagrantfile] ssh-keygen failed for '#{name}'")
+end
+
+ANSIBLE_PUB = File.read(File.join(KEYS_DIR, "ansible_ed25519.pub")).strip
+NODES.each_key do |name|
+  own = File.read(File.join(KEYS_DIR, "#{name}_ed25519.pub")).strip
+  File.binwrite(File.join(KEYS_DIR, "#{name}_authorized_keys"), "#{own}\n#{ANSIBLE_PUB}\n")
+end
+
+INSECURE_KEYS = Dir.glob(File.join(Vagrant.user_data_path.to_s, "insecure_private_key{,s/*}"))
+                   .reject { |f| f.end_with?(".pub") }
+
+def custom_ssh(node, name, authorized_keys)
+  node.ssh.insert_key       = false
+  node.ssh.private_key_path = [File.join(KEYS_DIR, "#{name}_ed25519")] + INSECURE_KEYS
+  node.vm.provision "ssh-key", type: "file",
+    source: File.join(KEYS_DIR, authorized_keys),
+    destination: "/home/vagrant/.ssh/authorized_keys"
+end
+
+Vagrant.configure("2") do |config|
+  config.vm.box              = BOX_NAME
+  config.vm.box_version      = BOX_VERSION
+  config.vm.box_check_update = false
+  config.vm.boot_timeout     = 600
+
+  NODES.each do |name, spec|
+    config.vm.define name do |node|
+      node.vm.hostname = name
+      node.vm.network "private_network", ip: spec[:ip]
+      node.vm.synced_folder ".", "/vagrant", disabled: true
+      node.vm.provider "virtualbox" do |vb|
+        vb.name   = "cogsi-ca5-#{name}"
+        vb.memory = spec[:memory]
+        vb.cpus   = spec[:cpus]
+      end
+      custom_ssh(node, name, "#{name}_authorized_keys")
+    end
+  end
+
+  config.vm.define "ctrl2" do |ctrl|
+    ctrl.vm.hostname = "ctrl2"
+    ctrl.vm.network "private_network", ip: CTRL_IP
+    ctrl.vm.synced_folder ".", "/vagrant", mount_options: ["dmode=755", "fmode=644"]
+    ctrl.vm.provider "virtualbox" do |vb|
+      vb.name   = "cogsi-ca5-ctrl2"
+      vb.memory = 3072          # Gradle + Docker builds
+      vb.cpus   = 1           # 1 vCPU: with Hyper-V active, 2 vCPUs can hang the boot
+    end
+    custom_ssh(ctrl, "ctrl2", "ctrl2_ed25519.pub")
+
+    ctrl.vm.provision "bootstrap", type: "shell", path: "provision/ctrl2.sh"
+    ctrl.vm.provision "ansible", type: "ansible_local" do |ansible|
+      ansible.install            = false
+      ansible.compatibility_mode = "2.0"
+      ansible.provisioning_path  = "/vagrant/ansible"
+      ansible.config_file        = "/vagrant/ansible/ansible.cfg"
+      ansible.inventory_path     = "/vagrant/ansible/hosts.ini"
+      ansible.playbook           = "site.yml"
+      ansible.limit              = "all"
+    end
+  end
+end

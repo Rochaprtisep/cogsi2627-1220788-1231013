@@ -1,0 +1,95 @@
+# -*- mode: ruby -*-
+# CA5 Part 1: blue (active) and green (candidate) VMs,
+# plus ctrl = Ansible control node and Jenkins agent.
+#   ctrl 192.168.56.20   blue 192.168.56.21   green 192.168.56.22
+require "fileutils"
+
+BOX_NAME    = "bento/ubuntu-24.04"
+BOX_VERSION = "202510.26.0"
+
+NODES = {
+  "blue"  => { ip: "192.168.56.21", cpus: 1, memory: 1536 },
+  "green" => { ip: "192.168.56.22", cpus: 1, memory: 1536 },
+}
+CTRL_IP = "192.168.56.20"
+
+ROOT     = File.dirname(File.expand_path(__FILE__))
+KEYS_DIR = File.join(ROOT, "keys")
+
+# Keys generated once on the host and never committed (keys/ is in .gitignore)
+#   <vm>_ed25519     host/Jenkins -> VM     ansible_ed25519  ctrl -> blue/green
+FileUtils.mkdir_p(KEYS_DIR)
+(NODES.keys + %w[ctrl ansible]).each do |name|
+  key = File.join(KEYS_DIR, "#{name}_ed25519")
+  next if File.exist?(key)
+  system("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "cogsi-ca5-#{name}", "-f", key) ||
+    abort("[Vagrantfile] ssh-keygen failed for '#{name}'")
+end
+
+# authorized_keys of blue/green = its own key + the Ansible key (binwrite keeps LF)
+ANSIBLE_PUB = File.read(File.join(KEYS_DIR, "ansible_ed25519.pub")).strip
+NODES.each_key do |name|
+  own = File.read(File.join(KEYS_DIR, "#{name}_ed25519.pub")).strip
+  File.binwrite(File.join(KEYS_DIR, "#{name}_authorized_keys"), "#{own}\n#{ANSIBLE_PUB}\n")
+end
+
+# Vagrant's insecure keys are only needed for the very first boot
+INSECURE_KEYS = Dir.glob(File.join(Vagrant.user_data_path.to_s, "insecure_private_key{,s/*}"))
+                   .reject { |f| f.end_with?(".pub") }
+
+def custom_ssh(node, name, authorized_keys)
+  node.ssh.insert_key       = false
+  node.ssh.private_key_path = [File.join(KEYS_DIR, "#{name}_ed25519")] + INSECURE_KEYS
+  node.vm.provision "ssh-key", type: "file",
+    source: File.join(KEYS_DIR, authorized_keys),
+    destination: "/home/vagrant/.ssh/authorized_keys"
+end
+
+Vagrant.configure("2") do |config|
+  config.vm.box              = BOX_NAME
+  config.vm.box_version      = BOX_VERSION
+  config.vm.box_check_update = false
+  config.vm.boot_timeout     = 600
+
+  # ---------------------------------------------- blue and green (managed by Ansible)
+  NODES.each do |name, spec|
+    config.vm.define name do |node|
+      node.vm.hostname = name
+      node.vm.network "private_network", ip: spec[:ip]
+      node.vm.synced_folder ".", "/vagrant", disabled: true
+      node.vm.provider "virtualbox" do |vb|
+        vb.name   = "cogsi-ca5-#{name}"
+        vb.memory = spec[:memory]
+        vb.cpus   = spec[:cpus]
+      end
+      custom_ssh(node, name, "#{name}_authorized_keys")
+    end
+  end
+
+  # ---------------------------------------------- ctrl (Ansible + Jenkins agent), last to boot
+  config.vm.define "ctrl" do |ctrl|
+    ctrl.vm.hostname = "ctrl"
+    ctrl.vm.network "private_network", ip: CTRL_IP
+    # Not world-writable, otherwise Ansible ignores ansible.cfg
+    ctrl.vm.synced_folder ".", "/vagrant", mount_options: ["dmode=755", "fmode=644"]
+    # Repository root, read-only: source of the version deployed on blue
+    ctrl.vm.synced_folder "../..", "/repo", mount_options: ["ro", "dmode=755", "fmode=644"]
+    ctrl.vm.provider "virtualbox" do |vb|
+      vb.name   = "cogsi-ca5-ctrl"
+      vb.memory = 2560
+      vb.cpus   = 1
+    end
+    custom_ssh(ctrl, "ctrl", "ctrl_ed25519.pub")
+
+    ctrl.vm.provision "bootstrap", type: "shell", path: "provision/ctrl.sh"
+    ctrl.vm.provision "ansible", type: "ansible_local" do |ansible|
+      ansible.install            = false
+      ansible.compatibility_mode = "2.0"
+      ansible.provisioning_path  = "/vagrant/ansible"
+      ansible.config_file        = "/vagrant/ansible/ansible.cfg"
+      ansible.inventory_path     = "/vagrant/ansible/hosts.ini"
+      ansible.playbook           = "site.yml"
+      ansible.limit              = "all"
+    end
+  end
+end
