@@ -11,7 +11,8 @@ plugins {
 }
 
 group = 'com.example'
-version = '1.0.0'
+// The CI pipeline passes -PappVersion=1.x.<build>; local builds keep 1.0.0
+version = findProperty('appVersion') ?: '1.0.0'
 
 def appName = 'bookstore'
 
