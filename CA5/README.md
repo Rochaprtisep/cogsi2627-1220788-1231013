@@ -1,6 +1,6 @@
 # CA5 — CI/CD Pipelines
 
-## Relatório Técnico — Parte 1
+## Relatório Técnico — Partes 1 e 2
 
 **Unidade Curricular:** Configuração e Gestão de Sistemas (COGSI)  
 **Mestrado:** Engenharia Informática / Engenharia de Segurança Informática  
@@ -251,7 +251,184 @@ A VM `green` reverteu imediatamente para a versão `1.0.2` sem qualquer falha ou
 
 ## 5. Parte 2 — Multibranch, Docker Hub e Deploy em Produção
 
-*(Em desenvolvimento na segunda fase do projeto — implementação conjunta das pipelines multibranch, contentorização Docker multi-stage com utilizador non-root, execução de testes unitários e de integração em paralelo, push automatizado para o Docker Hub e deployment condicional na VM `prod` exclusivo para o branch `main`).*
+O objetivo da **Parte 2** é uma pipeline **Multibranch** que, a cada push em `development` ou `main` (disparado por **webhook do GitHub**), compila o Bookstore, executa **testes unitários e de integração em paralelo e em dois agentes**, constrói uma **imagem Docker** com uma tag única, publica-a no **Docker Hub** e, **apenas no branch `main`**, faz o deploy numa VM de produção com **Ansible**, seguido de health checks e notificação por email. Tal como na Parte 1 do CA4, a aplicação e a base de dados H2 correm **no mesmo contentor**.
+
+### 5.1. Arquitetura e Nós
+
+| Nó | IP | Sistema | Papel |
+|---|---|---|---|
+| **Host (Jenkins Controller / Built-In Node)** | `192.168.56.1:9090` | Windows 11 | Orquestração; executa também os **testes de integração** (execução distribuída) |
+| **ctrl2 (Agente Jenkins `ca5-p2`)** | `192.168.56.30` | Ubuntu 24.04 (`bento/ubuntu-24.04`) | Gradle, Docker (build/push da imagem) e Ansible (deploy) |
+| **prod (Produção)** | `192.168.56.31` | Ubuntu 24.04 | Docker Engine; corre o contentor `bookstore` na porta `8080` |
+
+![Nós Jenkins: controller Windows e agente Linux ctrl2](images/ca5-p2-nodes.png)
+
+Ficheiros da Parte 2:
+
+```text
+CA5/part2/
+  .gitignore            # .vagrant/, keys/, secrets/, docker-test/
+  Vagrantfile           # prod + ctrl2
+  provision/ctrl2.sh    # Ansible, Docker, JDK 17 (Gradle) e JRE 21 (agente Jenkins)
+  Dockerfile            # imagem do Bookstore com H2 embutida
+  Jenkinsfile           # pipeline Multibranch
+  ansible/
+    ansible.cfg  hosts.ini  site.yml  deploy.yml
+    group_vars/all.yml
+    roles/docker/tasks/main.yml
+```
+
+**Decisões e justificações:**
+
+1. **Agente Linux `ctrl2` + controller Windows:** o Ansible não corre em Windows; o `ctrl2` concentra Gradle, Docker e Ansible. O controller Windows (Built-In Node, 2 executores) corre os testes de integração em paralelo, demonstrando a execução distribuída. Por defeito o Jenkins recomenda 0 executores no controller; aqui são usados 2 propositadamente para este requisito.
+2. **1 vCPU por VM:** com o Hyper-V ativo no Windows, o VirtualBox corre em modo NEM (`HM: HMR3Init: Attempting fall back to NEM: VT-x is not available` no `VBox.log`). Com 2 vCPUs a VM `prod` ficava presa no arranque em `Begin: Loading essential drivers ...` e o Vagrant terminava em *Timed out while waiting for the machine to boot*. Com 1 vCPU o arranque é fiável.
+3. **Chaves SSH geradas pelo Vagrantfile e fora do Git:** `keys/` está no `.gitignore`. Num commit inicial as chaves foram incluídas por falta do `.gitignore`; foram removidas do índice (`git rm --cached`) e **regeneradas**, recriando as VMs, para que as chaves expostas no histórico deixassem de ter validade.
+4. **Ferramenta Git por nó:** o Git do controller Windows está configurado como `git.exe`; no nó `ctrl2` foi definida uma *Tool Location* `(Git) Default = /usr/bin/git`, porque os dois nós têm sistemas operativos diferentes (sem isso o checkout falhava com `Cannot run program "git.exe"`).
+
+### 5.2. Infraestrutura (Vagrant + Ansible)
+
+* `Vagrantfile`: mesma box e mesma gestão de chaves da Parte 1; `prod` com a rede privada `192.168.56.31` e sem pasta partilhada; `ctrl2` com a pasta `CA5/part2` montada em `/vagrant` e o provisionamento `ansible_local` (`site.yml`).
+* `provision/ctrl2.sh`: instala `ansible`, `docker.io`, `python3-docker`, `openjdk-17-jdk-headless` e `openjdk-21-jre-headless`; adiciona o utilizador `vagrant` ao grupo `docker` (o agente Jenkins corre como `vagrant`).
+* `site.yml` → role `docker` na `prod`: Docker Engine, SDK Python (usado pela coleção `community.docker`) e `ufw` (só 22 e 8080 abertos). A aplicação **não** é arrancada aqui: é responsabilidade da pipeline.
+
+Reprodução:
+
+```bat
+cd CA5\part2
+vagrant up prod
+vagrant up ctrl2
+vagrant ssh ctrl2 -c "cd /vagrant/ansible && ansible all -m ping"
+```
+
+### 5.3. Imagem Docker (`CA5/part2/Dockerfile`)
+
+```dockerfile
+FROM eclipse-temurin:17-jre-alpine
+ARG APP_VERSION=dev
+ARG GIT_COMMIT=unknown
+LABEL org.opencontainers.image.version="$APP_VERSION" org.opencontainers.image.revision="$GIT_COMMIT"
+RUN addgroup -S bookstore && adduser -S -G bookstore -H -h /app -s /sbin/nologin bookstore \
+ && mkdir -p /app/data && chown bookstore:bookstore /app/data
+WORKDIR /app
+COPY bookstore.jar /app/bookstore.jar
+USER bookstore
+VOLUME /app/data
+EXPOSE 8080
+ENV SPRING_DATASOURCE_URL=jdbc:h2:file:/app/data/bookstore SERVICE_ENVIRONMENT=production
+HEALTHCHECK --interval=15s --timeout=3s --start-period=60s --retries=3 \
+  CMD wget -qO- http://localhost:8080/actuator/health | grep -q '"status":"UP"' || exit 1
+ENTRYPOINT ["java", "-jar", "/app/bookstore.jar"]
+```
+
+* **Não é multi-stage, de propósito (*build once, deploy many*):** a pipeline já compilou e testou o JAR; a imagem apenas o empacota, garantindo que o que chega à produção é exatamente o artefacto testado.
+* **JRE Alpine e utilizador non-root** (como no CA4), **H2 em ficheiro num volume** (dados sobrevivem a redeploys), **labels OCI** com versão e commit (rastreabilidade imagem ↔ código) e **HEALTHCHECK**.
+
+Teste manual da imagem no `ctrl2`, antes de a integrar na pipeline:
+
+```text
+$ docker ps --filter name=bs-test
+CONTAINER ID   IMAGE                  ...   STATUS                        PORTS                    NAMES
+db7ee0692f58   bookstore-test:local   ...   Up About a minute (healthy)   0.0.0.0:8085->8080/tcp   bs-test
+$ curl -s localhost:8085/info/details
+{"_links":{"service":{"href":"bookstore-api"},"version":{"href":"1.1.0"},"environment":{"href":"production"},...}}
+$ docker exec bs-test id
+uid=100(bookstore) gid=101(bookstore) groups=101(bookstore)
+```
+
+A versão vem de `-PappVersion` (alteração ao `CA1/part2/app/build.gradle`: `version = findProperty('appVersion') ?: '1.0.0'`).
+
+### 5.4. Playbook de Deploy (`CA5/part2/ansible/deploy.yml`)
+
+Executado pelo Jenkins no `ctrl2` com `ansible-playbook deploy.yml -e image=<user>/cogsi-ca5-bookstore -e image_tag=<tag>`; as credenciais do Docker Hub chegam apenas por variáveis de ambiente (`DH_USER`, `DH_TOKEN`) injetadas por `withCredentials`. Cobre os requisitos pela ordem:
+
+| Requisito | Tarefa(s) |
+|---|---|
+| Garantir Docker instalado | `apt: docker.io, python3-docker` + `systemd: docker started/enabled` |
+| Autenticar no Docker Hub e fazer pull da tag gerada | `community.docker.docker_login` (`no_log`) + `docker_image source: pull` |
+| Parar e remover o contentor existente | `docker_container_info` (reporta a imagem a substituir) + `docker_container state: absent` |
+| Arrancar novo contentor | `docker_container` com `restart_policy: unless-stopped`, porta `8080`, volume `bookstore-data` |
+| Verificação | `uri /actuator/health` até `UP` (40 tentativas × 3 s); `docker_login state: absent`; `docker_prune images` |
+
+### 5.5. Configuração do Jenkins
+
+| Elemento | Configuração |
+|---|---|
+| Credenciais | `github-pat` (token *fine-grained*, só leitura do repositório), `dockerhub` (access token Read & Write), `ctrl2-ssh` (chave do agente), `smtp` (Mailtrap) |
+| Agente `ctrl2` | *Launch agents via SSH*, host `192.168.56.30`, label `ca5-p2`, JavaPath `/usr/lib/jvm/java-21-openjdk-amd64/bin/java`, Tool Location Git `/usr/bin/git` |
+| Built-In Node | 2 executores (label `built-in`) para os testes de integração |
+| Job `ca5-part2` | *Multibranch Pipeline*, fonte GitHub, filtro de branches `main development`, Script Path `CA5/part2/Jenkinsfile` |
+| Email | *Extended E-mail Notification* com SMTP do Mailtrap (sandbox) |
+
+### 5.6. Pipeline (`CA5/part2/Jenkinsfile`)
+
+| Stage | Onde | O que faz |
+|---|---|---|
+| Checkout | ctrl2 | `checkout scm` do branch que disparou o build |
+| Assemble | ctrl2 | `./gradlew clean bootJar -PappVersion=1.1.<build>` |
+| Test → Unit tests | ctrl2 | `./gradlew test` + `junit` |
+| Test → Integration tests | controller Windows | `checkout scm` + `gradlew.bat integrationTest` + `junit` (em paralelo com os unitários) |
+| Build and Tag Docker Image | ctrl2 | `docker build` com a tag única `<branch>-<build>` (ex.: `main-1`) |
+| Archive | ctrl2 | `Dockerfile`, `build-metadata.json` (imagem, tag, versão, branch, commit, URL do build) e `image-inspect.json` |
+| Push Docker Image | ctrl2 | `docker login --password-stdin` com a credencial `dockerhub`, `docker push`, `docker logout` |
+| Deploy | ctrl2 | `when { branch 'main' }` → `ansible-playbook deploy.yml` |
+| Post: success | ctrl2 | Em `main`: health checks a `/actuator/health`, `/info/details` (versão do build) e `/books`; email SUCCESS |
+| Post: unstable / failure | — | Email UNSTABLE / FAILURE com o link para os resultados ou a consola |
+
+Justificações:
+
+* **Tag única `<branch>-<build>`:** uma tag publicada nunca é reescrita e o deploy usa exatamente a imagem do build; a tag inclui o branch porque cada branch do Multibranch tem a sua numeração.
+* **`when { branch 'main' }`:** `development` executa build, testes e push, mas o stage Deploy é ignorado.
+* **Testes em paralelo em workspaces separados:** cada ramo tem o seu checkout e a sua pasta `build/`, evitando conflitos entre execuções Gradle; o tempo do stage Test fica próximo do ramo mais lento em vez da soma dos dois.
+* **Segredos:** só existem em Jenkins Credentials; o Jenkinsfile refere apenas IDs e o `withCredentials` mascara os valores nos logs.
+
+### 5.7. Webhook do GitHub
+
+O Jenkins está em `localhost:9090`, inacessível a partir da Internet. Foi exposto apenas através de um túnel **ngrok** com domínio estático:
+
+```bat
+ngrok http --domain=nag-trapezoid-scuff.ngrok-free.dev 9090
+```
+
+Webhook no GitHub: Payload URL `https://nag-trapezoid-scuff.ngrok-free.dev/github-webhook/`, `application/json`, *Just the push event*. A primeira configuração usava o URL sem `/github-webhook/` e o Jenkins respondia `403 No valid crumb was included in the request` (proteção CSRF); o endpoint `/github-webhook/` do plugin GitHub é o único que aceita pedidos do GitHub sem *crumb*.
+
+Segurança: com o túnel o Jenkins fica exposto, por isso o acesso anónimo está desligado (*Logged-in users can do anything*, sem leitura anónima) e o registo de contas está desativado.
+
+![Entrega do webhook no GitHub com sucesso](images/ca5-p2-webhook-delivery.png)
+
+![Build disparado pelo push event recebido via webhook](images/ca5-p2-dev-build-cause.png)
+
+### 5.8. Evidências
+
+**Branch `development` (build #3):** testes unitários e de integração em paralelo, imagem `rochaprt/cogsi-ca5-bookstore:development-3` publicada e **Deploy ignorado**.
+
+![Pipeline em development: testes em paralelo e Deploy ignorado](images/ca5-p2-dev-stage-view.png)
+
+![Artefactos arquivados: Dockerfile e metadata do build](images/ca5-p2-dev-artifacts.png)
+
+![Email de sucesso em development: Deployed to production false](images/ca5-p2-dev-email.png)
+
+**Branch `main` (build #1):** mesmas stages, agora com **Deploy** executado.
+
+![Pipeline em main: Deploy executado](images/ca5-p2-main-stage-view.png)
+
+Consola do build: `PLAY RECAP` do Ansible sem falhas (`prod : ok=13 changed=5 failed=0`) e verificação pós-deploy (`production is healthy and running rochaprt/cogsi-ca5-bookstore:main-1`):
+
+![Consola do deploy em main e health checks](images/ca5-p2-main-deploy-console.png)
+
+A produção passou a servir a versão do build (`1.1.1`, ambiente `production`):
+
+![info/details da VM prod](images/ca5-p2-prod-info.png)
+
+![Email de sucesso em main: Deployed to production true](images/ca5-p2-main-email.png)
+
+### 5.9. Reproduzir a Parte 2
+
+1. `vagrant up prod` e `vagrant up ctrl2` em `CA5/part2`.
+2. Arrancar o Jenkins (`JENKINS_HOME=C:\jenkins\home`, porta 9090) e confirmar o nó `ctrl2` online.
+3. Arrancar o túnel ngrok (secção 5.7).
+4. Fazer push para `development` (build sem deploy) e fazer merge para `main` (build com deploy).
+5. Verificar `http://192.168.56.31:8080/info/details`.
+
 
 ---
 
