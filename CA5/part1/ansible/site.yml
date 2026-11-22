@@ -1,0 +1,59 @@
+# CA5 Part 1 provisioning: both VMs get the runtime; only blue gets the current version.
+- name: Runtime for blue and green
+  hosts: bookstore
+  become: true
+  roles:
+    - common
+    - bookstore_runtime
+
+- name: Build the current version on ctrl
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Copy the Bookstore sources from the read-only synced repo (no build outputs)
+      ansible.builtin.command: >-
+        rsync -a --delete --exclude build/ --exclude .gradle/
+        {{ src_repo_dir }}/ {{ build_dir }}/
+      changed_when: false
+
+    - name: Build the boot jar (bash because the synced folder has no exec bit)
+      ansible.builtin.command:
+        cmd: bash ./gradlew bootJar -PappVersion={{ blue_version }} --no-daemon --console=plain
+        chdir: "{{ build_dir }}"
+        creates: "{{ build_dir }}/app/build/libs/bookstore-{{ blue_version }}.jar"
+
+- name: Deploy the current version on blue (active environment)
+  hosts: blue
+  become: true
+  vars:
+    release: "bookstore-{{ blue_version }}.jar"
+  tasks:
+    - name: Copy the jar built on ctrl
+      ansible.builtin.copy:
+        src: "{{ build_dir }}/app/build/libs/{{ release }}"
+        dest: "{{ app_dir }}/releases/{{ release }}"
+        owner: root
+        group: "{{ app_user }}"
+        mode: "0644"
+
+    - name: Point current.jar to it
+      ansible.builtin.file:
+        src: "{{ app_dir }}/releases/{{ release }}"
+        dest: "{{ app_dir }}/current.jar"
+        state: link
+        force: true
+      notify: Restart bookstore
+
+    - name: Make sure it is running
+      ansible.builtin.systemd: { name: bookstore, state: started }
+
+    - name: Health check
+      ansible.builtin.uri: { url: "http://localhost:{{ app_port }}/actuator/health", return_content: true }
+      register: health
+      until: health.status == 200 and health.json.status == 'UP'
+      retries: 30
+      delay: 3
+
+  handlers:
+    - name: Restart bookstore
+      ansible.builtin.systemd: { name: bookstore, state: restarted }

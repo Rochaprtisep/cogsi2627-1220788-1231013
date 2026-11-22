@@ -1,0 +1,17 @@
+[Unit]
+Description=Bookstore Spring Boot application (CA5 - {{ inventory_hostname }})
+After=network-online.target
+# green has no jar until Jenkins deploys one: skip the start instead of failing
+ConditionPathExists={{ app_dir }}/current.jar
+
+[Service]
+User={{ app_user }}
+Group={{ app_user }}
+WorkingDirectory={{ app_dir }}
+ExecStart=/usr/bin/java -Xmx512m -jar {{ app_dir }}/current.jar --spring.config.additional-location=file:{{ app_dir }}/application.properties
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

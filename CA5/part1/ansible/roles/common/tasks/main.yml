@@ -1,0 +1,14 @@
+- name: Install the Java 17 runtime and base tools
+  ansible.builtin.apt:
+    name: [openjdk-17-jre-headless, curl, ufw]
+    state: present
+    lock_timeout: 300
+
+- name: Allow SSH before enabling the firewall
+  community.general.ufw: { rule: allow, port: "22", proto: tcp }
+
+- name: Allow the Bookstore port (Jenkins health checks and the browser)
+  community.general.ufw: { rule: allow, port: "{{ app_port | string }}", proto: tcp }
+
+- name: Enable ufw, denying every other incoming connection
+  community.general.ufw: { state: enabled, direction: incoming, policy: deny }
