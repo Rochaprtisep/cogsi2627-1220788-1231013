@@ -1,0 +1,80 @@
+# Deploys the Bookstore image identified by the tag generated in the Jenkins pipeline.
+#   DH_USER=... DH_TOKEN=... ansible-playbook deploy.yml -e image=<user>/cogsi-ca5-bookstore -e image_tag=main-12
+- name: Deploy the Bookstore container on the production VM
+  hosts: prod
+  become: true
+
+  pre_tasks:
+    - name: The pipeline must pass the image and its tag, and the Docker Hub credentials via env vars
+      ansible.builtin.assert:
+        that:
+          - image is defined
+          - image_tag is defined
+          - lookup('env', 'DH_USER') | length > 0
+          - lookup('env', 'DH_TOKEN') | length > 0
+        quiet: true
+
+  tasks:
+    # 1. Ensure Docker is installed (also done by site.yml, repeated so the playbook works on a fresh VM)
+    - name: Ensure Docker and the Docker SDK for Python are installed
+      ansible.builtin.apt:
+        name: [docker.io, python3-docker]
+        state: present
+        update_cache: true
+        cache_valid_time: 86400
+        lock_timeout: 300
+
+    - name: Ensure Docker is running
+      ansible.builtin.systemd: { name: docker, state: started, enabled: true }
+
+    # 2. Authenticate with Docker Hub and pull the image with the pipeline tag
+    - name: Log in to Docker Hub
+      community.docker.docker_login:
+        username: "{{ lookup('env', 'DH_USER') }}"
+        password: "{{ lookup('env', 'DH_TOKEN') }}"
+      no_log: true
+
+    - name: Pull {{ image }}:{{ image_tag }}
+      community.docker.docker_image:
+        name: "{{ image }}"
+        tag: "{{ image_tag }}"
+        source: pull
+
+    # 3. Stop and remove the current container, if present
+    - name: Inspect the current container
+      community.docker.docker_container_info: { name: "{{ container_name }}" }
+      register: current
+
+    - name: Report what is being replaced
+      ansible.builtin.debug:
+        msg: "Replacing {{ current.container.Config.Image if current.exists else 'nothing (first deploy)' }}"
+
+    - name: Stop and remove the current container
+      community.docker.docker_container: { name: "{{ container_name }}", state: absent }
+
+    # 4. Start a new container from the pulled image
+    - name: Start the new container
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        image: "{{ image }}:{{ image_tag }}"
+        state: started
+        restart_policy: unless-stopped
+        published_ports: ["{{ app_port }}:8080"]
+        volumes: ["{{ data_volume }}:/app/data"]
+        labels:
+          ca5.deployed-tag: "{{ image_tag }}"
+
+    - name: Wait until the application reports UP
+      ansible.builtin.uri:
+        url: "http://localhost:{{ app_port }}/actuator/health"
+        return_content: true
+      register: health
+      until: health.status == 200 and health.json.status == 'UP'
+      retries: 40
+      delay: 3
+
+    - name: Log out of Docker Hub (no credentials left on the VM)
+      community.docker.docker_login: { state: absent }
+
+    - name: Remove dangling images from previous deploys
+      community.docker.docker_prune: { images: true }
