@@ -1,0 +1,151 @@
+// CA5 Part 2: multibranch pipeline - build, parallel tests, Docker image, Docker Hub, deploy on main only
+pipeline {
+  agent { label 'ca5-p2' }                         // ctrl2: Linux, Gradle, Docker, Ansible
+
+  options {
+    skipDefaultCheckout()                          // explicit Checkout stage
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '30'))
+  }
+
+  environment {
+    APP_DIR     = 'CA1/part2'
+    IMAGE       = 'rochaprt/cogsi-ca5-bookstore'
+    APP_VERSION = "1.1.${env.BUILD_NUMBER}"
+    // Unique per branch and build, valid as a Docker tag (no slashes)
+    IMAGE_TAG   = "${env.BRANCH_NAME.replaceAll('[^A-Za-z0-9_.-]', '-')}-${env.BUILD_NUMBER}"
+    PROD_URL    = 'http://192.168.56.31:8080'
+    NOTIFY_TO   = '1220788@isep.ipp.pt'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        script {
+          def scmVars = checkout scm
+          env.GIT_COMMIT = scmVars.GIT_COMMIT
+        }
+      }
+    }
+
+    stage('Assemble') {
+      steps {
+        dir(env.APP_DIR) {
+          sh 'chmod +x gradlew && ./gradlew clean bootJar -PappVersion=$APP_VERSION --no-daemon --console=plain'
+        }
+      }
+    }
+
+    stage('Test') {
+      parallel {
+        stage('Unit tests') {                      // runs on ctrl2 (Linux agent)
+          steps {
+            dir(env.APP_DIR) { sh './gradlew test --no-daemon --console=plain' }
+          }
+          post { always { junit "${env.APP_DIR}/app/build/test-results/test/*.xml" } }
+        }
+        stage('Integration tests') {               // runs on the Windows controller: distributed execution
+          agent { label 'built-in' }
+          steps {
+            checkout scm                           // separate workspace on another machine
+            dir(env.APP_DIR) { bat 'gradlew.bat integrationTest --no-daemon --console=plain' }
+          }
+          post { always { junit "${env.APP_DIR}/app/build/test-results/integrationTest/*.xml" } }
+        }
+      }
+    }
+
+    stage('Build and Tag Docker Image') {
+      steps {
+        sh '''
+          rm -rf docker-ctx && mkdir docker-ctx
+          cp CA5/part2/Dockerfile docker-ctx/
+          cp $APP_DIR/app/build/libs/bookstore-$APP_VERSION.jar docker-ctx/bookstore.jar
+          docker build \
+            --build-arg APP_VERSION=$APP_VERSION \
+            --build-arg GIT_COMMIT=$GIT_COMMIT \
+            -t $IMAGE:$IMAGE_TAG docker-ctx
+        '''
+      }
+    }
+
+    stage('Archive') {
+      steps {
+        sh '''
+          cat > build-metadata.json <<EOF2
+{
+  "image": "$IMAGE",
+  "tag": "$IMAGE_TAG",
+  "appVersion": "$APP_VERSION",
+  "branch": "$BRANCH_NAME",
+  "commit": "$GIT_COMMIT",
+  "jenkinsBuild": "$BUILD_URL",
+  "builtAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF2
+          docker image inspect $IMAGE:$IMAGE_TAG > image-inspect.json
+        '''
+        archiveArtifacts artifacts: 'CA5/part2/Dockerfile, build-metadata.json, image-inspect.json',
+                         fingerprint: true
+        script { currentBuild.displayName = "#${env.BUILD_NUMBER} ${env.IMAGE_TAG}" }
+      }
+    }
+
+    stage('Push Docker Image') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub',
+                                          usernameVariable: 'DH_USER', passwordVariable: 'DH_TOKEN')]) {
+          sh '''
+            echo "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin
+            docker push $IMAGE:$IMAGE_TAG
+            docker logout
+          '''
+        }
+      }
+    }
+
+    stage('Deploy') {
+      when { branch 'main' }                       // production deploy only from main
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub',
+                                          usernameVariable: 'DH_USER', passwordVariable: 'DH_TOKEN')]) {
+          dir('CA5/part2/ansible') {
+            sh 'ansible-playbook deploy.yml -e image=$IMAGE -e image_tag=$IMAGE_TAG'
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      script {
+        if (env.BRANCH_NAME == 'main') {
+          // Deployment verification in production, from outside the VM
+          sh '''
+            curl -fsS --retry 20 --retry-delay 3 --retry-all-errors $PROD_URL/actuator/health | grep -q '"status":"UP"'
+            curl -fsS $PROD_URL/info/details | grep -q "$APP_VERSION"
+            curl -fsS $PROD_URL/books > /dev/null
+            echo "[CA5] production is healthy and running $IMAGE:$IMAGE_TAG"
+          '''
+        }
+      }
+      emailext to: env.NOTIFY_TO,
+               subject: "[CA5] SUCCESS ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+               body: """Branch: ${env.BRANCH_NAME}
+Image: ${env.IMAGE}:${env.IMAGE_TAG}
+Deployed to production: ${env.BRANCH_NAME == 'main'}
+${env.BUILD_URL}"""
+    }
+    unstable {
+      emailext to: env.NOTIFY_TO,
+               subject: "[CA5] UNSTABLE ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+               body: "Some tests failed. Results: ${env.BUILD_URL}testReport/"
+    }
+    failure {
+      emailext to: env.NOTIFY_TO,
+               subject: "[CA5] FAILURE ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+               body: "Console: ${env.BUILD_URL}console"
+    }
+  }
+}
